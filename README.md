@@ -6,6 +6,12 @@ Based on [duskmoon314/rCore:ch6](https://github.com/duskmoon314/rCore/tree/ch6) 
 
 Add support of **user mode trap**
 
+## Example
+
+![A user mode trap example](assets/example.png)
+
+The user mode process triggers and handles `user soft interrupt` in the user mode itself.
+
 ## How to run
 
 I prefer to use `just` and do not guarantee the correctness of the `makefile` in os.
