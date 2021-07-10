@@ -7,19 +7,36 @@ use crate::{config::TRAP_CONTEXT, loader::get_app_data_by_name, mm::translated_s
 use alloc::sync::{Arc, Weak};
 use alloc::vec;
 use alloc::vec::Vec;
-use riscv::register::{ucause, uip, utval};
+use riscv::register::{uie, uip, utval};
 use spin::{Mutex, MutexGuard};
 
-pub struct TrapInfo {
-    pub ucause: usize,
-    pub utval: usize,
-    pub uip: usize,
+const USER_TRAP_BUFFER_SIZE: usize = 20;
+
+pub struct UserTrapQueue {
+    inner: Mutex<UserTrapBuffer>,
 }
 
-pub unsafe fn restore_trap_info(trap_info: &Arc<TrapInfo>) {
-    ucause::write(trap_info.ucause);
-    utval::write(trap_info.utval);
-    uip::write(trap_info.uip);
+pub struct UserTrapRecord {
+    pub cause: usize,
+    pub source: usize,
+}
+
+pub struct UserTrapBuffer {
+    arr: [UserTrapRecord; USER_TRAP_BUFFER_SIZE],
+    tail: usize,
+}
+
+pub struct UserTrapInfo {
+    pub uip: usize,
+    pub uie: usize,
+    pub trap_queue: Arc<UserTrapQueue>,
+}
+
+pub unsafe fn restore_user_trap_info(user_trap_info: &Arc<UserTrapInfo>) {
+    // ucause::write(user_trap_info.ucause);
+    // utval::write(user_trap_info.utval);
+    // uip::write(user_trap_info.uip);
+    // uie::write(user_trap_info.uie);
 }
 
 pub struct TaskControlBlock {
@@ -34,7 +51,7 @@ pub struct TaskControlBlockInner {
     pub trap_cx_ppn: PhysPageNum,
     pub base_size: usize,
     pub task_cx_ptr: usize,
-    pub trap_info: Option<Arc<TrapInfo>>,
+    pub user_trap_info: Option<Arc<UserTrapInfo>>,
     pub task_status: TaskStatus,
     pub priority: isize,
     pub memory_set: MemorySet,
@@ -120,7 +137,7 @@ impl TaskControlBlock {
                 trap_cx_ppn,
                 base_size: user_sp,
                 task_cx_ptr: task_cx_ptr as usize,
-                trap_info: None,
+                user_trap_info: None,
                 task_status: TaskStatus::Ready,
                 memory_set,
                 parent: None,
@@ -206,7 +223,7 @@ impl TaskControlBlock {
                 trap_cx_ppn,
                 base_size: parent_inner.base_size,
                 task_cx_ptr: task_cx_ptr as usize,
-                trap_info: None,
+                user_trap_info: None,
                 task_status: TaskStatus::Ready,
                 memory_set,
                 parent: Some(Arc::downgrade(self)),
@@ -260,7 +277,7 @@ impl TaskControlBlock {
                     trap_cx_ppn,
                     base_size: user_sp,
                     task_cx_ptr: task_cx_ptr as usize,
-                    trap_info: None,
+                    user_trap_info: None,
                     task_status: TaskStatus::Ready,
                     memory_set,
                     parent: Some(Arc::downgrade(self)),
