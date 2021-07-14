@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(global_asm)]
 #![feature(llvm_asm)]
+#![feature(asm)]
 #![feature(panic_info_message)]
 #![feature(alloc_error_handler)]
 
@@ -15,16 +16,19 @@ extern crate log;
 #[macro_use]
 mod console;
 mod config;
+mod console_blog;
 mod fs;
 mod lang_items;
 mod loader;
 mod logger;
 mod mm;
+mod plic;
 mod sbi;
 mod syscall;
 mod task;
 mod timer;
 mod trap;
+mod uart;
 
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.asm"));
@@ -37,9 +41,32 @@ fn clear_bss() {
     (sbss as usize..ebss as usize).for_each(|a| unsafe { (a as *mut u8).write_volatile(0) });
 }
 
+#[macro_export]
+macro_rules! print_uart
+{
+	($($args:tt)+) => ({
+			use core::fmt::Write;
+			let _ = write!(crate::uart::Uart::new(0x1000_0000), $($args)+);
+			});
+}
+#[macro_export]
+macro_rules! println_uart
+{
+	() => ({
+		   print!("\r\n")
+		   });
+	($fmt:expr) => ({
+			print_uart!(concat!($fmt, "\r\n"))
+			});
+	($fmt:expr, $($args:tt)+) => ({
+			print_uart!(concat!($fmt, "\r\n"), $($args)+)
+			});
+}
+
 #[no_mangle]
 pub fn rust_main() -> ! {
     clear_bss();
+    uart::Uart::new(0x10000000).init();
     logger::init();
     debug!("[kernel] Hello, world!");
     mm::init();
@@ -50,6 +77,15 @@ pub fn rust_main() -> ! {
     trap::enable_timer_interrupt();
     timer::set_next_trigger();
     loader::list_apps();
+
+    debug!("Setting up PLIC");
+    plic::set_interrupt_threshold(0);
+    debug!("Setting plic interrupt threshold");
+    plic::enable_interrupt(10);
+    debug!("Enable plic interrupt 10");
+    plic::set_interrupt_priority(10, 1);
+    debug!("PLIC UART is set");
+    println_uart!("uart print test");
     task::run_tasks();
     panic!("Unreachable in rust_main!");
 }

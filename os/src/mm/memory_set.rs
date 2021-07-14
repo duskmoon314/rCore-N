@@ -144,6 +144,26 @@ impl MemorySet {
             ),
             None,
         );
+        debug!("mapping plic");
+        memory_set.push(
+            MapArea::new(
+                (0xc00_0000 as usize).into(),
+                (0x1000_0000 as usize).into(),
+                MapType::Identical,
+                MapPermission::R | MapPermission::W,
+            ),
+            None,
+        );
+        debug!("mapping uart");
+        memory_set.push(
+            MapArea::new(
+                (0x1000_0000 as usize).into(),
+                (0x1000_0200 as usize).into(),
+                MapType::Identical,
+                MapPermission::R | MapPermission::W,
+            ),
+            None,
+        );
         memory_set
     }
     /// Include sections in elf and trampoline and TrapContext and user stack,

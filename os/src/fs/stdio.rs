@@ -1,5 +1,7 @@
 use super::File;
+use crate::console_blog::pop_stdin;
 use crate::mm::UserBuffer;
+use crate::print_uart;
 use crate::sbi::console_getchar;
 use crate::task::suspend_current_and_run_next;
 
@@ -13,7 +15,8 @@ impl File for Stdin {
         // busy loop
         let mut c: usize;
         loop {
-            c = console_getchar();
+            // c = console_getchar();
+            c = pop_stdin() as usize;
             if c == 0 {
                 suspend_current_and_run_next();
                 continue;
@@ -39,6 +42,7 @@ impl File for Stdout {
     fn write(&self, user_buf: UserBuffer) -> Result<usize, isize> {
         for buffer in user_buf.buffers.iter() {
             print!("{}", core::str::from_utf8(*buffer).unwrap());
+            // print_uart!("{}", core::str::from_utf8(*buffer).unwrap());
         }
         Ok(user_buf.len())
     }
