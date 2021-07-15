@@ -75,6 +75,7 @@ pub fn rust_main() -> ! {
     println!("after initproc!");
     trap::init();
     trap::enable_timer_interrupt();
+    trap::enable_external_interrupt();
     timer::set_next_trigger();
     loader::list_apps();
 

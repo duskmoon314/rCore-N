@@ -20,7 +20,7 @@ pub use processor::{
     set_current_priority, take_current_task,
 };
 
-use self::task::restore_trap_info;
+use self::task::restore_user_trap_info;
 
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
@@ -39,13 +39,13 @@ pub fn suspend_current_and_run_next() {
     // jump to scheduling cycle
     schedule(task_cx_ptr2);
 
-    let task = current_task().unwrap();
-    let task_inner = task.acquire_inner_lock();
-    if let Some(trap_info) = &task_inner.trap_info {
-        unsafe {
-            restore_trap_info(trap_info);
-        }
-    }
+    // let task = current_task().unwrap();
+    // let task_inner = task.acquire_inner_lock();
+    // if let Some(trap_info) = &task_inner.trap_info {
+    //     unsafe {
+    //         restore_trap_info(trap_info);
+    //     }
+    // }
 }
 
 pub fn exit_current_and_run_next(exit_code: i32) {
@@ -80,13 +80,13 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     let _unused: usize = 0;
     schedule(&_unused as *const _);
 
-    let task = take_current_task().unwrap();
-    let task_inner = task.acquire_inner_lock();
-    if let Some(trap_info) = &task_inner.trap_info {
-        unsafe {
-            restore_trap_info(trap_info);
-        }
-    }
+    // let task = take_current_task().unwrap();
+    // let task_inner = task.acquire_inner_lock();
+    // if let Some(trap_info) = &task_inner.trap_info {
+    //     unsafe {
+    //         restore_trap_info(trap_info);
+    //     }
+    // }
 }
 
 lazy_static! {

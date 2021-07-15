@@ -7,10 +7,11 @@ use crate::task::{
     current_trap_cx, current_user_token, exit_current_and_run_next, suspend_current_and_run_next,
 };
 use crate::timer::set_next_trigger;
+use riscv::asm::ebreak;
 use riscv::register::{
     mtvec::TrapMode,
     scause::{self, Exception, Interrupt, Trap},
-    sideleg, sie, stval, stvec,
+    sepc, sideleg, sie, sstatus, stval, stvec,
 };
 
 global_asm!(include_str!("trap.asm"));
@@ -24,7 +25,10 @@ pub fn init() {
 
 fn set_kernel_trap_entry() {
     unsafe {
-        stvec::write(trap_from_kernel as usize, TrapMode::Direct);
+        extern "C" {
+            fn kernelvec();
+        }
+        stvec::write(kernelvec as usize, TrapMode::Direct);
     }
 }
 
@@ -37,6 +41,12 @@ fn set_user_trap_entry() {
 pub fn enable_timer_interrupt() {
     unsafe {
         sie::set_stimer();
+    }
+}
+
+pub fn enable_external_interrupt() {
+    unsafe {
+        sie::set_sext();
     }
 }
 
@@ -113,8 +123,39 @@ pub fn trap_return() -> ! {
 }
 
 #[no_mangle]
-pub fn trap_from_kernel() -> ! {
-    panic!("a trap {:?} from kernel!", scause::read().cause());
+pub extern "C" fn trap_from_kernel() {
+    unsafe {
+        use riscv::asm::ebreak;
+        ebreak();
+    }
+    let scause = scause::read();
+    let stval = stval::read();
+    let sepc = sepc::read();
+    let sstatus = sstatus::read();
+    match scause.cause() {
+        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            set_next_trigger();
+            // unsafe {
+            //     ebreak();
+            // }
+            suspend_current_and_run_next();
+        }
+        Trap::Interrupt(Interrupt::SupervisorExternal) => {
+            // debug!("Supervisor External");
+            unsafe {
+                ebreak();
+            }
+            plic::handle_external_interrupt();
+        }
+        _ => {
+            error!(
+                "Unsupported trap {:?}, stval = {:#x}!",
+                scause.cause(),
+                stval
+            );
+            panic!("a trap {:?} from kernel!", scause::read().cause());
+        }
+    }
 }
 
 pub use context::TrapContext;

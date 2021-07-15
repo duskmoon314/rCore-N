@@ -14,16 +14,17 @@ impl File for Stdin {
         assert_eq!(user_buf.len(), 1);
         // busy loop
         let mut c: usize;
-        loop {
-            // c = console_getchar();
-            c = pop_stdin() as usize;
-            if c == 0 {
-                suspend_current_and_run_next();
-                continue;
-            } else {
-                break;
-            }
-        }
+        // loop {
+        //     // c = console_getchar();
+        //     c = pop_stdin() as usize;
+        //     if c == 0 {
+        //         suspend_current_and_run_next();
+        //         continue;
+        //     } else {
+        //         break;
+        //     }
+        // }
+        c = pop_stdin() as usize;
         let ch = c as u8;
         unsafe {
             user_buf.buffers[0].as_mut_ptr().write_volatile(ch);

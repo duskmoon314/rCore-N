@@ -5,11 +5,11 @@ use crate::uart;
 // https://osblog.stephenmarz.com/ch5.html
 
 pub const PLIC_BASE: usize = 0xc00_0000;
-pub const PLIC_PRIORITY_BASE: usize = 0x04;
+pub const PLIC_PRIORITY_BASE: usize = 0x00;
 pub const PLIC_PENDING_BASE: usize = 0x1000;
-pub const PLIC_ENABLE_BASE: usize = 0x2000;
+pub const PLIC_ENABLE_BASE: usize = 0x2080;
 pub const PLIC_ENABLE_STRIDE: usize = 0x80;
-pub const PLIC_CONTEXT_BASE: usize = 0x20_0000;
+pub const PLIC_CONTEXT_BASE: usize = 0x20_1000;
 pub const PLIC_CONTEXT_STRIDE: usize = 0x1000;
 
 /// Enable a given interrupt id
@@ -88,8 +88,8 @@ pub fn handle_external_interrupt() {
     if let Some(irq) = claim_interrupt() {
         match irq {
             10 => {
-                debug!("PLIC: UART irq");
                 uart::handle_interrupt();
+                debug!("PLIC: UART irq");
             }
             _ => {
                 debug!("PLIC: Not handle yet");
