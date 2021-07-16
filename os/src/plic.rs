@@ -7,14 +7,25 @@ use crate::uart;
 pub const PLIC_BASE: usize = 0xc00_0000;
 pub const PLIC_PRIORITY_BASE: usize = 0x00;
 pub const PLIC_PENDING_BASE: usize = 0x1000;
-pub const PLIC_ENABLE_BASE: usize = 0x2080;
+pub const PLIC_ENABLE_BASE: usize = 0x2000;
 pub const PLIC_ENABLE_STRIDE: usize = 0x80;
 pub const PLIC_CONTEXT_BASE: usize = 0x20_1000;
 pub const PLIC_CONTEXT_STRIDE: usize = 0x1000;
 
+pub fn context(hartid: usize, mode: char) -> usize {
+    const MODE_PER_HART: usize = 3;
+    hartid * MODE_PER_HART
+        + match mode {
+            'M' => 0,
+            'S' => 1,
+            'U' => 2,
+            _ => panic!("Wrong Mode"),
+        }
+}
+
 /// Enable a given interrupt id
-pub fn enable_interrupt(id: u32) {
-    let enables = (PLIC_BASE + PLIC_ENABLE_BASE) as *mut u32;
+pub fn enable_interrupt(id: usize) {
+    let enables = (PLIC_BASE + PLIC_ENABLE_BASE + context(0, 'S') * PLIC_ENABLE_STRIDE) as *mut u32;
     unsafe {
         enables.write_volatile(enables.read_volatile() | 1 << id);
     }
