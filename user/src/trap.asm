@@ -10,7 +10,7 @@
     .globl __restore_u
     .align 2
 __alltraps_u:
-    csrw uscratch, sp
+    # csrw uscratch, sp
     addi sp, sp, -35*8; # sp = sp + -35*8
     sd x1, 1*8(sp)
     sd x3, 3*8(sp)
@@ -48,5 +48,5 @@ __restore_u:
         .set n, n+1
     .endr
     addi sp, sp, 35*8
-    csrr sp, uscratch
+    # csrr sp, uscratch
     uret

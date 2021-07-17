@@ -34,6 +34,15 @@ pub fn handle_alloc_error(layout: core::alloc::Layout) -> ! {
 #[no_mangle]
 #[link_section = ".text.entry"]
 pub extern "C" fn _start(argc: usize, argv: usize) -> ! {
+    use riscv::register::{mtvec::TrapMode, utvec};
+
+    extern "C" {
+        fn __alltraps_u();
+    }
+    unsafe {
+        utvec::write(__alltraps_u as usize, TrapMode::Direct);
+    }
+
     unsafe {
         HEAP.lock()
             .init(HEAP_SPACE.as_ptr() as usize, USER_HEAP_SIZE);

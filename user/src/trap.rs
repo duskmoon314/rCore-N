@@ -11,6 +11,7 @@ pub struct UserTrapContext {
 
 global_asm!(include_str!("trap.asm"));
 
+#[linkage = "weak"]
 #[no_mangle]
 pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
     let ucause = ucause::read();

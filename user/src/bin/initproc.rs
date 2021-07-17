@@ -14,19 +14,9 @@ const BS: u8 = 0x08u8;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use riscv::register::{mtvec::TrapMode, uie, uip};
-use riscv::register::{ustatus, utvec};
 use user_lib::console::getchar;
-use user_lib::{close, dup, exec, fork, open, sleep, wait, waitpid, yield_, OpenFlags};
+use user_lib::{close, dup, exec, fork, open, waitpid, OpenFlags};
 
-pub fn init_u() {
-    extern "C" {
-        fn __alltraps_u();
-    }
-    unsafe {
-        utvec::write(__alltraps_u as usize, TrapMode::Direct);
-    }
-}
 
 // #[no_mangle]
 // fn main() -> i32 {
