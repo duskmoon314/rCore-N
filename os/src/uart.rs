@@ -1,6 +1,6 @@
 // Based on https://github.com/sgmarz/osblog
 
-use crate::{console_blog::push_stdin, print_uart, println_uart};
+use crate::{console_blog::push_stdin};
 use core::{
     convert::TryInto,
     fmt::{Error, Write},
@@ -132,20 +132,20 @@ pub fn handle_interrupt() {
         // was because we needed to poll for UART data. Now that we have interrupts,
         // here it goes!
         push_stdin(c);
-        match c {
-            8 => {
-                // This is a backspace, so we
-                // essentially have to write a space and
-                // backup again:
-                print_uart!("{} {}", 8 as char, 8 as char);
-            }
-            10 | 13 => {
-                // Newline or carriage-return
-                println_uart!();
-            }
-            _ => {
-                print_uart!("{}", c as char);
-            }
-        }
+        // match c {
+        //     8 => {
+        //         // This is a backspace, so we
+        //         // essentially have to write a space and
+        //         // backup again:
+        //         print_uart!("{} {}", 8 as char, 8 as char);
+        //     }
+        //     10 | 13 => {
+        //         // Newline or carriage-return
+        //         println_uart!();
+        //     }
+        //     _ => {
+        //         print_uart!("{}", c as char);
+        //     }
+        // }
     }
 }

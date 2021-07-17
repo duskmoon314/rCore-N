@@ -2,42 +2,12 @@ use super::TaskContext;
 use super::{pid_alloc, KernelStack, PidHandle};
 use crate::fs::{File, MailBox, Socket, Stdin, Stdout};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
-use crate::trap::{trap_handler, TrapContext};
+use crate::trap::{trap_handler, TrapContext, UserTrapInfo};
 use crate::{config::TRAP_CONTEXT, loader::get_app_data_by_name, mm::translated_str};
 use alloc::sync::{Arc, Weak};
 use alloc::vec;
 use alloc::vec::Vec;
-use riscv::register::{uie, uip, utval};
 use spin::{Mutex, MutexGuard};
-
-const USER_TRAP_BUFFER_SIZE: usize = 20;
-
-pub struct UserTrapQueue {
-    inner: Mutex<UserTrapBuffer>,
-}
-
-pub struct UserTrapRecord {
-    pub cause: usize,
-    pub source: usize,
-}
-
-pub struct UserTrapBuffer {
-    arr: [UserTrapRecord; USER_TRAP_BUFFER_SIZE],
-    tail: usize,
-}
-
-pub struct UserTrapInfo {
-    pub uip: usize,
-    pub uie: usize,
-    pub trap_queue: Arc<UserTrapQueue>,
-}
-
-pub unsafe fn restore_user_trap_info(user_trap_info: &Arc<UserTrapInfo>) {
-    // ucause::write(user_trap_info.ucause);
-    // utval::write(user_trap_info.utval);
-    // uip::write(user_trap_info.uip);
-    // uie::write(user_trap_info.uie);
-}
 
 pub struct TaskControlBlock {
     // immutable
@@ -51,7 +21,7 @@ pub struct TaskControlBlockInner {
     pub trap_cx_ppn: PhysPageNum,
     pub base_size: usize,
     pub task_cx_ptr: usize,
-    pub user_trap_info: Option<Arc<UserTrapInfo>>,
+    pub user_trap_info: Option<UserTrapInfo>,
     pub task_status: TaskStatus,
     pub priority: isize,
     pub memory_set: MemorySet,
@@ -110,6 +80,23 @@ impl TaskControlBlockInner {
 
     pub fn is_mailbox_empty(&self) -> bool {
         self.mail_box.is_empty()
+    }
+
+    pub fn is_user_trap_enabled(&self) -> bool {
+        self.get_trap_cx().sstatus.uie()
+    }
+
+    pub fn restore_user_trap_info(&mut self) {
+        use riscv::register::{uip, uscratch};
+        if self.is_user_trap_enabled() {
+            if let Some(trap_info) = &mut self.user_trap_info {
+                uscratch::write(trap_info.user_trap_record_num as usize);
+                trap_info.user_trap_record_num = 0;
+                unsafe {
+                    uip::set_usoft();
+                }
+            }
+        }
     }
 }
 

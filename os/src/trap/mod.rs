@@ -1,4 +1,5 @@
 mod context;
+mod usertrap;
 
 use crate::config::{TRAMPOLINE, TRAP_CONTEXT};
 use crate::plic;
@@ -125,7 +126,6 @@ pub fn trap_return() -> ! {
 #[no_mangle]
 pub extern "C" fn trap_from_kernel() {
     unsafe {
-        use riscv::asm::ebreak;
         ebreak();
     }
     let scause = scause::read();
@@ -159,3 +159,4 @@ pub extern "C" fn trap_from_kernel() {
 }
 
 pub use context::TrapContext;
+pub use usertrap::UserTrapInfo;

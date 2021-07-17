@@ -8,7 +8,6 @@ pub struct TrapContext {
     pub kernel_satp: usize,
     pub kernel_sp: usize,
     pub trap_handler: usize,
-    // pub utvec: usize,
 }
 
 impl TrapContext {

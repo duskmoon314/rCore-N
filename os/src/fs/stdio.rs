@@ -1,7 +1,6 @@
 use super::File;
 use crate::console_blog::pop_stdin;
 use crate::mm::UserBuffer;
-use crate::print_uart;
 use crate::sbi::console_getchar;
 use crate::task::suspend_current_and_run_next;
 

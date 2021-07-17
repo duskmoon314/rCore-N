@@ -10,7 +10,6 @@ use crate::task::{
 use crate::timer::get_time;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use riscv::register::utvec;
 
 pub fn sys_exit(exit_code: i32) -> ! {
     exit_current_and_run_next(exit_code);
