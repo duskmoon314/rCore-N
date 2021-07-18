@@ -2,7 +2,9 @@ use super::{frame_alloc, FrameTracker};
 use super::{PTEFlags, PageTable, PageTableEntry};
 use super::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
 use super::{StepByOne, VPNRange};
-use crate::config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE};
+use crate::config::{
+    MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE, USER_TRAP_BUFFER,
+};
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -225,6 +227,15 @@ impl MemorySet {
                 TRAMPOLINE.into(),
                 MapType::Framed,
                 MapPermission::R | MapPermission::W,
+            ),
+            None,
+        );
+        memory_set.push(
+            MapArea::new(
+                USER_TRAP_BUFFER.into(),
+                TRAP_CONTEXT.into(),
+                MapType::Framed,
+                MapPermission::R | MapPermission::W | MapPermission::U,
             ),
             None,
         );

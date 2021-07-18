@@ -15,6 +15,10 @@ const SYSCALL_WAITPID: usize = 260;
 const SYSCALL_SPAWN: usize = 400;
 const SYSCALL_MAILREAD: usize = 401;
 const SYSCALL_MAILWRITE: usize = 402;
+const SYSCALL_INIT_USER_TRAP: usize = 600;
+const SYSCALL_SEND_MSG: usize = 601;
+const SYSCALL_SET_TIMER: usize = 602;
+const SYSCALL_CLAIM_EXT_INT: usize = 603;
 
 mod fs;
 mod process;
@@ -42,6 +46,10 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
         SYSCALL_SPAWN => sys_spawn(args[0] as *const u8),
         SYSCALL_MAILREAD => sys_mailread(args[0] as *mut u8, args[1]),
         SYSCALL_MAILWRITE => sys_mailwrite(args[0], args[1] as *mut u8, args[2]),
+        SYSCALL_INIT_USER_TRAP => sys_init_user_trap(),
+        SYSCALL_SEND_MSG => sys_send_msg(args[0], args[1]),
+        SYSCALL_SET_TIMER => sys_set_timer(args[0]),
+        SYSCALL_CLAIM_EXT_INT => sys_claim_ext_int(args[0]),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }
 }

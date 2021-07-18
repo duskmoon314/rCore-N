@@ -136,3 +136,19 @@ pub fn sys_spawn(file: *const u8) -> isize {
         Err(_) => -1,
     }
 }
+
+pub fn sys_init_user_trap() -> isize {
+    crate::config::USER_TRAP_BUFFER as isize
+}
+
+pub fn sys_send_msg(pid: usize, msg: usize) -> isize {
+    -1
+}
+
+pub fn sys_set_timer(time: usize) -> isize {
+    -1
+}
+
+pub fn sys_claim_ext_int(device_id: usize) -> isize {
+    -1
+}

@@ -3,7 +3,11 @@ use super::{pid_alloc, KernelStack, PidHandle};
 use crate::fs::{File, MailBox, Socket, Stdin, Stdout};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::trap::{trap_handler, TrapContext, UserTrapInfo};
-use crate::{config::TRAP_CONTEXT, loader::get_app_data_by_name, mm::translated_str};
+use crate::{
+    config::{TRAP_CONTEXT, USER_TRAP_BUFFER},
+    loader::get_app_data_by_name,
+    mm::translated_str,
+};
 use alloc::sync::{Arc, Weak};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -252,6 +256,14 @@ impl TaskControlBlock {
                 .unwrap()
                 .ppn();
 
+            let user_trap_buffer_ppn = memory_set
+                .translate(VirtAddr::from(USER_TRAP_BUFFER).into())
+                .unwrap()
+                .ppn();
+            let user_trap_info = UserTrapInfo {
+                user_trap_buffer_ppn,
+                user_trap_record_num: 0,
+            };
             let pid_handle = pid_alloc();
             let kernel_stack = KernelStack::new(&pid_handle);
             let kernel_stack_top = kernel_stack.get_top();
@@ -264,7 +276,7 @@ impl TaskControlBlock {
                     trap_cx_ppn,
                     base_size: user_sp,
                     task_cx_ptr: task_cx_ptr as usize,
-                    user_trap_info: None,
+                    user_trap_info: Some(user_trap_info),
                     task_status: TaskStatus::Ready,
                     memory_set,
                     parent: Some(Arc::downgrade(self)),
