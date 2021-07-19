@@ -7,11 +7,14 @@
 #![feature(alloc_error_handler)]
 
 extern crate alloc;
+extern crate rv_plic;
 
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
 extern crate log;
+
+use rv_plic::Priority;
 
 #[macro_use]
 mod console;
@@ -79,13 +82,9 @@ pub fn rust_main() -> ! {
     timer::set_next_trigger();
     loader::list_apps();
 
-    debug!("Setting up PLIC");
-    plic::set_interrupt_threshold(0);
-    debug!("Setting plic interrupt threshold");
-    plic::enable_interrupt(10);
-    debug!("Enable plic interrupt 10");
-    plic::set_interrupt_priority(10, 1);
-    debug!("PLIC UART is set");
+    plic::plic::set_threshold(1, Priority::any());
+    plic::plic::enable(1, 10);
+    plic::plic::set_priority(10, Priority::lowest());
     println_uart!("uart print test");
     task::run_tasks();
     panic!("Unreachable in rust_main!");
