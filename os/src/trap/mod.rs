@@ -6,6 +6,7 @@ use crate::plic;
 use crate::syscall::syscall;
 use crate::task::{
     current_trap_cx, current_user_token, exit_current_and_run_next, suspend_current_and_run_next,
+    take_current_task,
 };
 use crate::timer::set_next_trigger;
 use riscv::asm::ebreak;
@@ -108,6 +109,9 @@ pub fn trap_handler() -> ! {
 
 #[no_mangle]
 pub fn trap_return() -> ! {
+    let task = take_current_task().unwrap();
+    let mut task_inner = task.acquire_inner_lock();
+    task_inner.restore_user_trap_info();
     set_user_trap_entry();
     let trap_cx_ptr = TRAP_CONTEXT;
     let user_satp = current_user_token();
@@ -159,4 +163,4 @@ pub extern "C" fn trap_from_kernel() {
 }
 
 pub use context::TrapContext;
-pub use usertrap::UserTrapInfo;
+pub use usertrap::{UserTrapInfo, UserTrapRecord, USER_EXT_INT_MAP, USER_TIMER_INT_MAP};

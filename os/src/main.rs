@@ -15,6 +15,7 @@ extern crate bitflags;
 extern crate log;
 
 use rv_plic::Priority;
+use plic::Plic;
 
 #[macro_use]
 mod console;
@@ -82,9 +83,9 @@ pub fn rust_main() -> ! {
     timer::set_next_trigger();
     loader::list_apps();
 
-    plic::plic::set_threshold(1, Priority::any());
-    plic::plic::enable(1, 10);
-    plic::plic::set_priority(10, Priority::lowest());
+    Plic::set_threshold(1, Priority::any());
+    Plic::enable(1, 10);
+    Plic::set_priority(10, Priority::lowest());
     println_uart!("uart print test");
     task::run_tasks();
     panic!("Unreachable in rust_main!");

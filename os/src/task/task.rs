@@ -94,10 +94,12 @@ impl TaskControlBlockInner {
         use riscv::register::{uip, uscratch};
         if self.is_user_trap_enabled() {
             if let Some(trap_info) = &mut self.user_trap_info {
-                uscratch::write(trap_info.user_trap_record_num as usize);
-                trap_info.user_trap_record_num = 0;
-                unsafe {
-                    uip::set_usoft();
+                if trap_info.user_trap_record_num > 0 {
+                    uscratch::write(trap_info.user_trap_record_num as usize);
+                    trap_info.user_trap_record_num = 0;
+                    unsafe {
+                        uip::set_usoft();
+                    }
                 }
             }
         }
@@ -250,7 +252,7 @@ impl TaskControlBlock {
         debug!("SPAWN exec {}", &f);
 
         if let Some(elf_data) = get_app_data_by_name(f.as_str()) {
-            let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
+            let ( memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
             let trap_cx_ppn = memory_set
                 .translate(VirtAddr::from(TRAP_CONTEXT).into())
                 .unwrap()
@@ -263,6 +265,7 @@ impl TaskControlBlock {
             let user_trap_info = UserTrapInfo {
                 user_trap_buffer_ppn,
                 user_trap_record_num: 0,
+                devices: Vec::new(),
             };
             let pid_handle = pid_alloc();
             let kernel_stack = KernelStack::new(&pid_handle);

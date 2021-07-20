@@ -151,7 +151,7 @@ impl MemorySet {
             MapArea::new(
                 (0xc00_0000 as usize).into(),
                 (0x1000_0000 as usize).into(),
-                MapType::Identical,
+                MapType::Mmio,
                 MapPermission::R | MapPermission::W,
             ),
             None,
@@ -161,7 +161,7 @@ impl MemorySet {
             MapArea::new(
                 (0x1000_0000 as usize).into(),
                 (0x1000_0200 as usize).into(),
-                MapType::Identical,
+                MapType::Mmio,
                 MapPermission::R | MapPermission::W,
             ),
             None,
@@ -350,6 +350,75 @@ impl MemorySet {
 
         Ok(len as isize)
     }
+
+    pub fn mmio_map(&mut self, start: usize, end: usize, port: usize) -> Result<isize, isize> {
+        if port & !7 != 0 || port & 7 == 0 || (end - start) > 1 << 30 {
+            Err(-1)
+        } else {
+            let start_va: VirtAddr = VirtAddr::from(start);
+            if start_va != start_va.floor().into() {
+                return Err(-1);
+            }
+            let end_va: VirtAddr = VirtAddr::from(end).ceil().into();
+
+            if self.is_mapped_area(start_va, end_va) {
+                return Err(-1);
+            }
+            self.push(
+                MapArea::new(
+                    start_va,
+                    end_va,
+                    MapType::Mmio,
+                    MapPermission::from_bits((port << 1 | 0b10000) as u8).unwrap(),
+                ),
+                None,
+            );
+            Ok((usize::from(end_va) - usize::from(start_va)) as isize)
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn mmio_unmap(&mut self, start: usize, end: usize) -> Result<isize, isize> {
+        let mut start_va: VirtAddr = VirtAddr::from(start);
+        if start_va != start_va.floor().into() {
+            return Err(-1);
+        }
+        let end_va: VirtAddr = VirtAddr::from(end).ceil().into();
+
+        let mut to_unmap: Vec<usize> = Vec::new();
+
+        for (i, area) in self.areas.iter().enumerate() {
+            if area
+                .vpn_range
+                .is_overlapped(&VPNRange::new(start_va.into(), end_va.into()))
+            {
+                to_unmap.push(i);
+            }
+        }
+
+        to_unmap.sort_by_key(|i| self.areas[*i].vpn_range.get_start());
+
+        for i in &to_unmap {
+            if start_va == self.areas[*i].vpn_range.get_start().into() {
+                start_va = self.areas[*i].vpn_range.get_end().into();
+            } else {
+                return Err(-1);
+            }
+        }
+        if start_va != end_va {
+            return Err(-1);
+        }
+
+        to_unmap.sort_by(|l, r| r.cmp(l));
+
+        for i in to_unmap {
+            self.areas[i].unmap(&mut self.page_table);
+            self.areas.remove(i);
+        }
+
+        Ok((end - start) as isize)
+    }
+
     pub fn recycle_data_pages(&mut self) {
         //*self = Self::new_bare();
         self.areas.clear();
@@ -391,6 +460,9 @@ impl MapArea {
         let ppn: PhysPageNum;
         match self.map_type {
             MapType::Identical => {
+                ppn = PhysPageNum(vpn.0);
+            }
+            MapType::Mmio => {
                 ppn = PhysPageNum(vpn.0);
             }
             MapType::Framed => {
@@ -447,6 +519,7 @@ impl MapArea {
 pub enum MapType {
     Identical,
     Framed,
+    Mmio,
 }
 
 bitflags! {

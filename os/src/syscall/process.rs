@@ -150,5 +150,29 @@ pub fn sys_set_timer(time: usize) -> isize {
 }
 
 pub fn sys_claim_ext_int(device_id: usize) -> isize {
-    -1
+    let device_id = device_id as u16;
+    let current_task = current_task().unwrap();
+    let mut inner = current_task.acquire_inner_lock();
+    if !inner.is_user_trap_enabled() {
+        return -1;
+    }
+    use crate::trap::USER_EXT_INT_MAP;
+    let user_trap_info = &mut inner.user_trap_info;
+    match user_trap_info {
+        Some(info) => {
+            let mut map = USER_EXT_INT_MAP.lock();
+            if !map.contains_key(&device_id) {
+                map.insert(device_id, current_task.getpid());
+                info.devices.push(device_id);
+            }
+            match device_id {
+                10 => match inner.memory_set.mmio_map(0x1000_0000, 0x1000_0200, 0x3) {
+                    Ok(_) => 0x1000_0000,
+                    Err(_) => -1,
+                },
+                _ => -1,
+            }
+        }
+        None => -1,
+    }
 }

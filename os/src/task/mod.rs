@@ -29,6 +29,9 @@ pub fn suspend_current_and_run_next() {
     let task_cx_ptr2 = task_inner.get_task_cx_ptr2();
     // Change status to Ready
     task_inner.task_status = TaskStatus::Ready;
+    if let Some(trap_info) = &task_inner.user_trap_info {
+        trap_info.disable_user_ext_int();
+    }
     drop(task_inner);
     // ---- release current PCB lock
 
@@ -37,9 +40,12 @@ pub fn suspend_current_and_run_next() {
     // jump to scheduling cycle
     schedule(task_cx_ptr2);
 
-    let task = current_task().unwrap();
-    let mut task_inner = task.acquire_inner_lock();
-    task_inner.restore_user_trap_info();
+    let task = take_current_task().unwrap();
+    // ---- hold current PCB lock
+    let inner = task.acquire_inner_lock();
+    if let Some(trap_info) = &inner.user_trap_info {
+        trap_info.enable_user_ext_int();
+    }
 }
 
 pub fn exit_current_and_run_next(exit_code: i32) {
@@ -47,6 +53,11 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     let task = current_task().unwrap();
     // **** hold current PCB lock
     let mut inner = task.acquire_inner_lock();
+    if let Some(trap_info) = &inner.user_trap_info {
+        trap_info.disable_user_ext_int();
+        trap_info.remove_user_ext_int_map();
+    }
+
     // Change status to Zombie
     inner.task_status = TaskStatus::Zombie;
     // Record exit code
@@ -75,8 +86,11 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     schedule(&_unused as *const _);
 
     let task = take_current_task().unwrap();
-    let mut task_inner = task.acquire_inner_lock();
-    task_inner.restore_user_trap_info();
+    // ---- hold current PCB lock
+    let task_inner = task.acquire_inner_lock();
+    if let Some(trap_info) = &task_inner.user_trap_info {
+        trap_info.enable_user_ext_int();
+    }
 }
 
 lazy_static! {
