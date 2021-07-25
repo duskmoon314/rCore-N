@@ -11,7 +11,7 @@ pub const PLIC_PRIORITY_BIT: usize = 3;
 
 pub type Plic = PLIC<PLIC_BASE, PLIC_PRIORITY_BIT>;
 
-pub fn context(hartid: usize, mode: char) -> usize {
+pub fn get_context(hartid: usize, mode: char) -> usize {
     const MODE_PER_HART: usize = 3;
     hartid * MODE_PER_HART
         + match mode {
@@ -23,12 +23,15 @@ pub fn context(hartid: usize, mode: char) -> usize {
 }
 
 pub fn handle_external_interrupt() {
-    if let Some(irq) = Plic::claim(1) {
+    if let Some(irq) = Plic::claim(get_context(0, 'S')) {
+        debug!("[PLIC] IRQ: {:?}", irq);
         let mut can_user_handle = false;
         if let Some(pid) = USER_EXT_INT_MAP.lock().get(&irq) {
+            debug!("[PLIC] irq mapped to pid {:?}", pid);
             if let Some(tcb) = find_task(*pid) {
                 let mut inner = tcb.acquire_inner_lock();
                 if inner.is_user_trap_enabled() {
+                    debug!("[PLIC] sending external interrupt");
                     if let Some(trap_info) = &mut inner.user_trap_info {
                         unsafe {
                             trap_info.push_trap_record(UserTrapRecord {
@@ -38,20 +41,24 @@ pub fn handle_external_interrupt() {
                         }
                         can_user_handle = true;
                     }
+                } else {
+                    warn!("[PLIC] task trap disabled!");
                 }
+            } else {
+                warn!("[PLIC] task not find!");
             }
         }
         if !can_user_handle {
             match irq {
                 10 => {
                     uart::handle_interrupt();
-                    debug!("PLIC: UART irq");
+                    debug!("[PLIC] kenel handling uart");
                 }
                 _ => {
-                    debug!("PLIC: Not handle yet");
+                    warn!("[PLIC]: Not handle yet");
                 }
             }
         }
-        Plic::complete(1, irq)
+        Plic::complete(get_context(0, 'S'), irq)
     }
 }

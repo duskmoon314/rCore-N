@@ -25,7 +25,7 @@ impl log::Log for SimpleLogger {
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
             print_colorized(
-                format_args!("[{:>5}] : {}\n", record.level(), record.args()),
+                format_args!("[{:>5}] : {}\r\n", record.level(), record.args()),
                 level_to_color(record.level()),
                 ANSICON::BgDefault as u8,
             )

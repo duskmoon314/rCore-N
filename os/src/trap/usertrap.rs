@@ -6,6 +6,7 @@ use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use lazy_static::*;
 use spin::Mutex;
 
+#[derive(Clone)]
 pub struct UserTrapInfo {
     pub user_trap_buffer_ppn: PhysPageNum,
     pub user_trap_record_num: usize,
@@ -22,6 +23,10 @@ pub struct UserTrapRecord {
 impl UserTrapInfo {
     // caller of this function should check wheter user interrupt is enabled
     pub unsafe fn push_trap_record(&mut self, trap_record: UserTrapRecord) {
+        debug!(
+            "pushing trap record, cause: {:?}, message: {:?}",
+            trap_record.cause, trap_record.message
+        );
         if self.user_trap_record_num < MAX_USER_TRAP_NUM {
             let head_ptr: *mut UserTrapRecord =
                 self.user_trap_buffer_ppn.get_mut::<UserTrapRecord>();

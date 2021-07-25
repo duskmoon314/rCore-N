@@ -76,7 +76,7 @@ pub fn rust_main() -> ! {
     mm::init();
     mm::remap_test();
     task::add_initproc();
-    println!("after initproc!");
+    println!("initproc added to task manager!");
     trap::init();
     trap::enable_timer_interrupt();
     trap::enable_external_interrupt();
@@ -85,6 +85,7 @@ pub fn rust_main() -> ! {
 
     Plic::set_threshold(1, Priority::any());
     Plic::enable(1, 10);
+    Plic::set_priority(9, Priority::lowest());
     Plic::set_priority(10, Priority::lowest());
     println_uart!("uart print test");
     task::run_tasks();
