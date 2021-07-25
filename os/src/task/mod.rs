@@ -40,7 +40,7 @@ pub fn suspend_current_and_run_next() {
     // jump to scheduling cycle
     schedule(task_cx_ptr2);
 
-    let task = take_current_task().unwrap();
+    let task = current_task().unwrap();
     // ---- hold current PCB lock
     let inner = task.acquire_inner_lock();
     if let Some(trap_info) = &inner.user_trap_info {
@@ -50,7 +50,7 @@ pub fn suspend_current_and_run_next() {
 
 pub fn exit_current_and_run_next(exit_code: i32) {
     // take from Processor
-    let task = current_task().unwrap();
+    let task = take_current_task().unwrap();
     // **** hold current PCB lock
     let mut inner = task.acquire_inner_lock();
     if let Some(trap_info) = &inner.user_trap_info {
@@ -85,8 +85,7 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     let _unused: usize = 0;
     schedule(&_unused as *const _);
 
-    let task = take_current_task().unwrap();
-    // ---- hold current PCB lock
+    let task = current_task().unwrap();
     let task_inner = task.acquire_inner_lock();
     if let Some(trap_info) = &task_inner.user_trap_info {
         trap_info.enable_user_ext_int();

@@ -5,8 +5,8 @@ use crate::config::{TRAMPOLINE, TRAP_CONTEXT};
 use crate::plic;
 use crate::syscall::syscall;
 use crate::task::{
-    current_trap_cx, current_user_token, exit_current_and_run_next, suspend_current_and_run_next,
-    take_current_task,
+    current_task, current_trap_cx, current_user_token, exit_current_and_run_next,
+    suspend_current_and_run_next,
 };
 use crate::timer::set_next_trigger;
 use riscv::asm::ebreak;
@@ -21,6 +21,8 @@ global_asm!(include_str!("trap.asm"));
 pub fn init() {
     unsafe {
         sideleg::set_usoft();
+        sideleg::set_uext();
+        sideleg::set_utimer();
     }
     set_kernel_trap_entry();
 }
@@ -109,9 +111,10 @@ pub fn trap_handler() -> ! {
 
 #[no_mangle]
 pub fn trap_return() -> ! {
-    let task = take_current_task().unwrap();
-    let mut task_inner = task.acquire_inner_lock();
-    task_inner.restore_user_trap_info();
+    current_task()
+        .unwrap()
+        .acquire_inner_lock()
+        .restore_user_trap_info();
     set_user_trap_entry();
     let trap_cx_ptr = TRAP_CONTEXT;
     let user_satp = current_user_token();
@@ -134,8 +137,8 @@ pub extern "C" fn trap_from_kernel() {
     }
     let scause = scause::read();
     let stval = stval::read();
-    let sepc = sepc::read();
-    let sstatus = sstatus::read();
+    let _sepc = sepc::read();
+    let _sstatus = sstatus::read();
     match scause.cause() {
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             set_next_trigger();

@@ -39,12 +39,12 @@ __switch:
     ld sp, 0(a1)
     # load registers in the TaskContext
     ld ra, 0(sp)
-    sd s0, 13*8(sp)
-    sd s1, 14*8(sp)
-    sd s2, 15*8(sp)
-    sd s3, 16*8(sp)
-    sd s4, 17*8(sp)
-    sd s5, 18*8(sp)
+    ld s0, 13*8(sp)
+    ld s1, 14*8(sp)
+    ld s2, 15*8(sp)
+    ld s3, 16*8(sp)
+    ld s4, 17*8(sp)
+    ld s5, 18*8(sp)
     csrw uie, s0
     csrw uip, s1
     csrw uepc, s2

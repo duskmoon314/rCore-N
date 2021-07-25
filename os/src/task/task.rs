@@ -1,10 +1,10 @@
 use super::TaskContext;
 use super::{pid_alloc, KernelStack, PidHandle};
 use crate::fs::{File, MailBox, Socket, Stdin, Stdout};
-use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
+use crate::mm::{translate_writable_va, MemorySet, PhysAddr, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::trap::{trap_handler, TrapContext, UserTrapInfo};
 use crate::{
-    config::{TRAP_CONTEXT, USER_TRAP_BUFFER},
+    config::{PAGE_SIZE, TRAP_CONTEXT, USER_TRAP_BUFFER},
     loader::get_app_data_by_name,
     mm::translated_str,
 };
@@ -90,11 +90,36 @@ impl TaskControlBlockInner {
         self.get_trap_cx().sstatus.uie()
     }
 
+    pub fn init_user_trap(&mut self) -> Result<isize, isize> {
+        if let None = self.user_trap_info {
+            // R | W
+            if let Ok(_) = self.mmap(USER_TRAP_BUFFER, PAGE_SIZE, 0b11) {
+                let phys_addr =
+                    translate_writable_va(self.get_user_token(), USER_TRAP_BUFFER).unwrap();
+                self.user_trap_info = Some(UserTrapInfo {
+                    user_trap_buffer_ppn: PhysPageNum::from(PhysAddr::from(phys_addr)),
+                    user_trap_record_num: 0,
+                    devices: Vec::new(),
+                });
+                unsafe {
+                    riscv::register::sstatus::set_upie();
+                }
+                return Ok(USER_TRAP_BUFFER as isize);
+            } else {
+                warn!("[init user trap] mmap failed!");
+            }
+        } else {
+            warn!("[init user trap] self user trap info is not None!");
+        }
+        Err(-1)
+    }
+
     pub fn restore_user_trap_info(&mut self) {
         use riscv::register::{uip, uscratch};
         if self.is_user_trap_enabled() {
             if let Some(trap_info) = &mut self.user_trap_info {
                 if trap_info.user_trap_record_num > 0 {
+                    debug!("injecting user trap");
                     uscratch::write(trap_info.user_trap_record_num as usize);
                     trap_info.user_trap_record_num = 0;
                     unsafe {
@@ -170,6 +195,7 @@ impl TaskControlBlock {
 
         // **** hold current PCB lock
         let mut inner = self.acquire_inner_lock();
+        inner.user_trap_info = None;
         // substitute memory_set
         inner.memory_set = memory_set;
         // update trap_cx ppn
@@ -209,6 +235,15 @@ impl TaskControlBlock {
                 new_fd_table.push(None);
             }
         }
+        let mut user_trap_info: Option<UserTrapInfo> = None;
+        if let Some(mut trap_info) = parent_inner.user_trap_info.clone() {
+            debug!("[fork] copy parent trap info");
+            trap_info.user_trap_buffer_ppn = memory_set
+                .translate(VirtAddr::from(USER_TRAP_BUFFER).into())
+                .unwrap()
+                .ppn();
+            user_trap_info = Some(trap_info);
+        }
         let task_control_block = Arc::new(TaskControlBlock {
             pid: pid_handle,
             kernel_stack,
@@ -216,7 +251,7 @@ impl TaskControlBlock {
                 trap_cx_ppn,
                 base_size: parent_inner.base_size,
                 task_cx_ptr: task_cx_ptr as usize,
-                user_trap_info: None,
+                user_trap_info,
                 task_status: TaskStatus::Ready,
                 memory_set,
                 parent: Some(Arc::downgrade(self)),
@@ -252,21 +287,11 @@ impl TaskControlBlock {
         debug!("SPAWN exec {}", &f);
 
         if let Some(elf_data) = get_app_data_by_name(f.as_str()) {
-            let ( memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
+            let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
             let trap_cx_ppn = memory_set
                 .translate(VirtAddr::from(TRAP_CONTEXT).into())
                 .unwrap()
                 .ppn();
-
-            let user_trap_buffer_ppn = memory_set
-                .translate(VirtAddr::from(USER_TRAP_BUFFER).into())
-                .unwrap()
-                .ppn();
-            let user_trap_info = UserTrapInfo {
-                user_trap_buffer_ppn,
-                user_trap_record_num: 0,
-                devices: Vec::new(),
-            };
             let pid_handle = pid_alloc();
             let kernel_stack = KernelStack::new(&pid_handle);
             let kernel_stack_top = kernel_stack.get_top();
@@ -279,7 +304,7 @@ impl TaskControlBlock {
                     trap_cx_ppn,
                     base_size: user_sp,
                     task_cx_ptr: task_cx_ptr as usize,
-                    user_trap_info: Some(user_trap_info),
+                    user_trap_info: None,
                     task_status: TaskStatus::Ready,
                     memory_set,
                     parent: Some(Arc::downgrade(self)),
