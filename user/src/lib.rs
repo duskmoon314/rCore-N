@@ -19,6 +19,8 @@ use alloc::vec::Vec;
 use buddy_system_allocator::LockedHeap;
 use syscall::*;
 
+pub use trap::{UserTrapContext, UserTrapRecord};
+
 const USER_HEAP_SIZE: usize = 32768;
 
 static mut HEAP_SPACE: [u8; USER_HEAP_SIZE] = [0; USER_HEAP_SIZE];
@@ -165,4 +167,20 @@ pub fn sleep(period_ms: usize) {
     while get_time() < start + period_ms as isize {
         sys_yield();
     }
+}
+
+pub fn init_user_trap() -> isize {
+    sys_init_user_trap()
+}
+
+pub fn send_msg(pid: usize, msg: usize) -> isize {
+    sys_send_msg(pid, msg)
+}
+
+pub fn set_timer(time: usize) -> isize {
+    sys_set_timer(time)
+}
+
+pub fn claim_ext_int(device_id: usize) -> isize {
+    sys_claim_ext_int(device_id)
 }

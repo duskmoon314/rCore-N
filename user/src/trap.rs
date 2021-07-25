@@ -9,6 +9,13 @@ pub struct UserTrapContext {
     pub uie: usize,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct UserTrapRecord {
+    pub cause: usize,
+    pub message: usize,
+}
+
 global_asm!(include_str!("trap.asm"));
 
 #[linkage = "weak"]

@@ -1,7 +1,8 @@
 use core::mem::size_of;
 
 use crate::loader::get_app_data_by_name;
-use crate::mm::{translate_writable_va, translated_refmut, translated_str};
+use crate::mm;
+use crate::task::find_task;
 use crate::task::{
     add_task, current_task, current_user_token, exit_current_and_run_next, mmap, munmap,
     set_current_priority, suspend_current_and_run_next,
@@ -31,11 +32,11 @@ pub fn sys_set_priority(prio: isize) -> isize {
 pub fn sys_get_time(time: usize, tz: usize) -> isize {
     let token = current_user_token();
     let mut pas: Vec<*mut usize> = Vec::new();
-    match translate_writable_va(token, time) {
+    match mm::translate_writable_va(token, time) {
         Err(_) => return -1,
         Ok(pa) => pas.push(pa as *mut usize),
     }
-    match translate_writable_va(token, time + size_of::<usize>()) {
+    match mm::translate_writable_va(token, time + size_of::<usize>()) {
         Err(_) => return -1,
         Ok(pa) => pas.push(pa as *mut usize),
     }
@@ -72,7 +73,7 @@ pub fn sys_fork() -> isize {
 
 pub fn sys_exec(path: *const u8) -> isize {
     let token = current_user_token();
-    let path = translated_str(token, path);
+    let path = mm::translated_str(token, path);
     debug!("EXEC {}", &path);
     if let Some(data) = get_app_data_by_name(path.as_str()) {
         let task = current_task().unwrap();
@@ -113,7 +114,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
         // ++++ temporarily hold child lock
         let exit_code = child.acquire_inner_lock().exit_code;
         // ++++ release child PCB lock
-        *translated_refmut(inner.memory_set.token(), exit_code_ptr) = exit_code;
+        *mm::translated_refmut(inner.memory_set.token(), exit_code_ptr) = exit_code;
         found_pid as isize
     } else {
         -2
@@ -138,10 +139,25 @@ pub fn sys_spawn(file: *const u8) -> isize {
 }
 
 pub fn sys_init_user_trap() -> isize {
-    crate::config::USER_TRAP_BUFFER as isize
+    debug!("init user trap!");
+    match current_task()
+        .unwrap()
+        .acquire_inner_lock()
+        .init_user_trap()
+    {
+        Ok(addr) => {
+            debug!("init ok, addr:{:?}", addr);
+            addr
+        }
+        Err(errno) => errno,
+    }
 }
 
 pub fn sys_send_msg(pid: usize, msg: usize) -> isize {
+    // if let Some(dest_task) = find_task(pid) {
+    //     let inner = dest_task.acquire_inner_lock();
+    //     if let Some(mut trap_info) = &inner.user_trap_info {}
+    // }
     -1
 }
 
@@ -156,23 +172,50 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
     if !inner.is_user_trap_enabled() {
         return -1;
     }
+    use crate::plic;
     use crate::trap::USER_EXT_INT_MAP;
     let user_trap_info = &mut inner.user_trap_info;
     match user_trap_info {
         Some(info) => {
             let mut map = USER_EXT_INT_MAP.lock();
             if !map.contains_key(&device_id) {
-                map.insert(device_id, current_task.getpid());
+                let pid = current_task.getpid();
+                debug!(
+                    "[syscall claim] mapping device {} to pid {}",
+                    device_id, pid
+                );
+                map.insert(device_id, pid);
                 info.devices.push(device_id);
+                let claim_addr = plic::PLIC_BASE
+                    + 0x200000
+                    + plic::get_context(0, 'U') as usize * crate::config::PAGE_SIZE;
+                if let Err(_) = inner.memory_set.mmio_map(
+                    claim_addr,
+                    claim_addr + crate::config::PAGE_SIZE,
+                    0b11,
+                ) {
+                    warn!("[syscall claim] map plic claim reg failed!");
+                    return -6;
+                }
+            }
+            unsafe {
+                riscv::register::sie::set_uext();
             }
             match device_id {
                 10 => match inner.memory_set.mmio_map(0x1000_0000, 0x1000_0200, 0x3) {
                     Ok(_) => 0x1000_0000,
-                    Err(_) => -1,
+                    Err(_) => -2,
                 },
-                _ => -1,
+                9 => match inner.memory_set.mmio_map(0x1000_0000, 0x1000_0200, 0x3) {
+                    Ok(_) => 0x1000_0000,
+                    Err(_) => -3,
+                },
+                _ => -4,
             }
         }
-        None => -1,
+        None => {
+            warn!("[syscall claim] user trap info is None!");
+            -5
+        }
     }
 }
