@@ -2,6 +2,7 @@ use core::mem::size_of;
 
 use crate::loader::get_app_data_by_name;
 use crate::mm;
+use crate::plic::Plic;
 use crate::task::find_task;
 use crate::task::{
     add_task, current_task, current_user_token, exit_current_and_run_next, mmap, munmap,
@@ -186,9 +187,8 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
                 );
                 map.insert(device_id, pid);
                 info.devices.push(device_id);
-                let claim_addr = plic::PLIC_BASE
-                    + 0x200000
-                    + plic::get_context(0, 'U') as usize * crate::config::PAGE_SIZE;
+                let claim_addr =
+                    Plic::context_address(plic::get_context(0, 'U')) * crate::config::PAGE_SIZE;
                 if let Err(_) = inner.memory_set.mmio_map(
                     claim_addr,
                     claim_addr + crate::config::PAGE_SIZE,
