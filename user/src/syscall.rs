@@ -13,6 +13,7 @@ const SYSCALL_GETPID: usize = 172;
 const SYSCALL_FORK: usize = 220;
 const SYSCALL_EXEC: usize = 221;
 const SYSCALL_WAITPID: usize = 260;
+const SYSCALL_SPAWN: usize = 400;
 const SYSCALL_INIT_USER_TRAP: usize = 600;
 const SYSCALL_SEND_MSG: usize = 601;
 const SYSCALL_SET_TIMER: usize = 602;
@@ -85,6 +86,10 @@ pub fn sys_exec(path: &str, args: &[*const u8]) -> isize {
         SYSCALL_EXEC,
         [path.as_ptr() as usize, args.as_ptr() as usize, 0],
     )
+}
+
+pub fn sys_spawn(path: &str) -> isize {
+    syscall(SYSCALL_SPAWN, [path.as_ptr() as usize, 0, 0])
 }
 
 pub fn sys_waitpid(pid: isize, exit_code: *mut i32) -> isize {
