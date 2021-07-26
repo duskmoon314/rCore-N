@@ -1,7 +1,7 @@
 use rv_plic::PLIC;
 
 use crate::task::find_task;
-use crate::trap::{UserTrapRecord, USER_EXT_INT_MAP};
+use crate::trap::{push_trap_record, UserTrapRecord, USER_EXT_INT_MAP};
 use crate::uart;
 
 #[cfg(feature = "board_qemu")]
@@ -28,24 +28,14 @@ pub fn handle_external_interrupt() {
         let mut can_user_handle = false;
         if let Some(pid) = USER_EXT_INT_MAP.lock().get(&irq) {
             debug!("[PLIC] irq mapped to pid {:?}", pid);
-            if let Some(tcb) = find_task(*pid) {
-                let mut inner = tcb.acquire_inner_lock();
-                if inner.is_user_trap_enabled() {
-                    debug!("[PLIC] sending external interrupt");
-                    if let Some(trap_info) = &mut inner.user_trap_info {
-                        unsafe {
-                            trap_info.push_trap_record(UserTrapRecord {
-                                cause: 8,
-                                message: irq as usize,
-                            })
-                        }
-                        can_user_handle = true;
-                    }
-                } else {
-                    warn!("[PLIC] task trap disabled!");
-                }
-            } else {
-                warn!("[PLIC] task not find!");
+            if let Ok(_) = push_trap_record(
+                *pid,
+                UserTrapRecord {
+                    cause: 8,
+                    message: irq as usize,
+                },
+            ) {
+                can_user_handle = true;
             }
         }
         if !can_user_handle {

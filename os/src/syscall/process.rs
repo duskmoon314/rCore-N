@@ -2,13 +2,13 @@ use core::mem::size_of;
 
 use crate::loader::get_app_data_by_name;
 use crate::mm;
-use crate::task::find_task;
 use crate::task::{
     add_task, current_task, current_user_token, exit_current_and_run_next, mmap, munmap,
     set_current_priority, suspend_current_and_run_next,
 };
+use crate::trap::{push_trap_record, UserTrapRecord};
 
-use crate::timer::get_time;
+use crate::timer::{get_time, TIMER_MAP};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
@@ -80,6 +80,7 @@ pub fn sys_exec(path: *const u8) -> isize {
         task.exec(data);
         0
     } else {
+        warn!("exec failed!");
         -1
     }
 }
@@ -154,11 +155,17 @@ pub fn sys_init_user_trap() -> isize {
 }
 
 pub fn sys_send_msg(pid: usize, msg: usize) -> isize {
-    // if let Some(dest_task) = find_task(pid) {
-    //     let inner = dest_task.acquire_inner_lock();
-    //     if let Some(mut trap_info) = &inner.user_trap_info {}
-    // }
-    -1
+    if let Ok(_) = push_trap_record(
+        pid,
+        UserTrapRecord {
+            cause: pid << 4,
+            message: msg,
+        },
+    ) {
+        0
+    } else {
+        -1
+    }
 }
 
 pub fn sys_set_timer(time: usize) -> isize {
@@ -197,9 +204,6 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
                     warn!("[syscall claim] map plic claim reg failed!");
                     return -6;
                 }
-            }
-            unsafe {
-                riscv::register::sie::set_uext();
             }
             match device_id {
                 10 => match inner.memory_set.mmio_map(0x1000_0000, 0x1000_0200, 0x3) {

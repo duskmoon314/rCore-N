@@ -1,7 +1,9 @@
 use crate::config::CLOCK_FREQ;
 use crate::sbi::set_timer;
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
+use lazy_static::*;
 use riscv::register::time;
+use spin::Mutex;
 
 const TICKS_PER_SEC: usize = 100;
 const MSEC_PER_SEC: usize = 1000;
@@ -39,4 +41,22 @@ pub fn get_time_ms() -> usize {
 
 pub fn set_next_trigger() {
     set_timer(time::read() + CLOCK_FREQ / TICKS_PER_SEC);
+}
+
+lazy_static! {
+    pub static ref TIMER_MAP: Arc<Mutex<BTreeMap<usize, usize>>> =
+        Arc::new(Mutex::new(BTreeMap::new()));
+}
+
+pub fn set_virtual_timer(time: usize, pid: usize) {
+    if time < time::read() {
+        return;
+    }
+    let mut timer_map = TIMER_MAP.lock();
+    timer_map.insert(time, pid);
+    if let Some((timer_min, _)) = timer_map.first_key_value() {
+        if time == *timer_min {
+            set_timer(time);
+        }
+    }
 }

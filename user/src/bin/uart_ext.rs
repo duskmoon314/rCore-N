@@ -235,14 +235,21 @@ mod user_trap {
         let utval = utval::read();
         match ucause.cause() {
             ucause::Trap::Interrupt(ucause::Interrupt::UserSoft) => {
-                println!("[user mode trap] user soft");
+                println!("[user trap] user soft");
                 let trap_record_num = uscratch::read();
                 let mut head_ptr = USER_TRAP_BUFFER as *const UserTrapRecord;
                 for _ in 0..trap_record_num {
                     unsafe {
                         let trap_record = *head_ptr;
-                        if ucause::Interrupt::from(trap_record.cause)
-                            == ucause::Interrupt::UserExternal
+                        let cause = trap_record.cause;
+                        if cause & 0xF == 0 {
+                            // "real" soft interrupt
+                            let pid = cause >> 4;
+                            println!(
+                                "[user trap] Received message {} from pid {}",
+                                trap_record.message, pid
+                            );
+                        } else if ucause::Interrupt::from(cause) == ucause::Interrupt::UserExternal
                         {
                             if trap_record.message == UART1_IRQN as usize {
                                 handle_input();

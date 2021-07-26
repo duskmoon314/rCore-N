@@ -2,7 +2,7 @@ use super::TaskContext;
 use super::{pid_alloc, KernelStack, PidHandle};
 use crate::fs::{File, MailBox, Socket, Stdin, Stdout};
 use crate::mm::{translate_writable_va, MemorySet, PhysAddr, PhysPageNum, VirtAddr, KERNEL_SPACE};
-use crate::trap::{trap_handler, TrapContext, UserTrapInfo};
+use crate::trap::{trap_handler, TrapContext, UserTrapError, UserTrapInfo, UserTrapRecord};
 use crate::{
     config::{PAGE_SIZE, TRAP_CONTEXT, USER_TRAP_BUFFER},
     loader::get_app_data_by_name,
@@ -91,6 +91,7 @@ impl TaskControlBlockInner {
     }
 
     pub fn init_user_trap(&mut self) -> Result<isize, isize> {
+        use riscv::register::{sie, sstatus};
         if let None = self.user_trap_info {
             // R | W
             if let Ok(_) = self.mmap(USER_TRAP_BUFFER, PAGE_SIZE, 0b11) {
@@ -102,7 +103,10 @@ impl TaskControlBlockInner {
                     devices: Vec::new(),
                 });
                 unsafe {
-                    riscv::register::sstatus::set_upie();
+                    sstatus::set_upie();
+                    sie::set_uext();
+                    sie::set_usoft();
+                    sie::set_utimer();
                 }
                 return Ok(USER_TRAP_BUFFER as isize);
             } else {
@@ -119,7 +123,7 @@ impl TaskControlBlockInner {
         if self.is_user_trap_enabled() {
             if let Some(trap_info) = &mut self.user_trap_info {
                 if trap_info.user_trap_record_num > 0 {
-                    debug!("injecting user trap");
+                    debug!("restore user trap");
                     uscratch::write(trap_info.user_trap_record_num as usize);
                     trap_info.user_trap_record_num = 0;
                     unsafe {
@@ -284,7 +288,7 @@ impl TaskControlBlock {
         let mut parent_inner = self.acquire_inner_lock();
         let parent_token = parent_inner.get_user_token();
         let f = translated_str(parent_token, file);
-        debug!("SPAWN exec {}", &f);
+        debug!("SPAWN exec {:?}", &f);
 
         if let Some(elf_data) = get_app_data_by_name(f.as_str()) {
             let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
