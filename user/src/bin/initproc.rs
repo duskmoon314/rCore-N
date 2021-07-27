@@ -17,7 +17,6 @@ use alloc::vec::Vec;
 use user_lib::console::getchar;
 use user_lib::{close, dup, exec, fork, open, waitpid, OpenFlags};
 
-
 // #[no_mangle]
 // fn main() -> i32 {
 //     println!("hello initproc");

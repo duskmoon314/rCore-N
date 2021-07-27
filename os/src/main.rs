@@ -5,6 +5,7 @@
 #![feature(asm)]
 #![feature(panic_info_message)]
 #![feature(alloc_error_handler)]
+#![feature(map_first_last)]
 
 extern crate alloc;
 extern crate rv_plic;
@@ -67,8 +68,6 @@ pub fn rust_main() -> ! {
     task::add_initproc();
     println!("initproc added to task manager!");
     trap::init();
-    trap::enable_timer_interrupt();
-    trap::enable_external_interrupt();
     timer::set_next_trigger();
     loader::list_apps();
 

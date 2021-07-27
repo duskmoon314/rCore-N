@@ -20,6 +20,9 @@ global_asm!(include_str!("trap.asm"));
 
 pub fn init() {
     unsafe {
+        sie::set_stimer();
+        sie::set_sext();
+        sie::set_ssoft();
         sideleg::set_usoft();
         sideleg::set_uext();
         sideleg::set_utimer();
@@ -39,18 +42,6 @@ fn set_kernel_trap_entry() {
 fn set_user_trap_entry() {
     unsafe {
         stvec::write(TRAMPOLINE as usize, TrapMode::Direct);
-    }
-}
-
-pub fn enable_timer_interrupt() {
-    unsafe {
-        sie::set_stimer();
-    }
-}
-
-pub fn enable_external_interrupt() {
-    unsafe {
-        sie::set_sext();
     }
 }
 
@@ -166,4 +157,6 @@ pub extern "C" fn trap_from_kernel() {
 }
 
 pub use context::TrapContext;
-pub use usertrap::{UserTrapInfo, UserTrapRecord, USER_EXT_INT_MAP, USER_TIMER_INT_MAP};
+pub use usertrap::{
+    push_trap_record, UserTrapError, UserTrapInfo, UserTrapRecord, USER_EXT_INT_MAP,
+};
