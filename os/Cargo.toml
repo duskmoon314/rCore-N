@@ -17,6 +17,7 @@ riscv = { git = "https://github.com/duskmoon314/riscv", branch = "extN", feature
 spin = "0.7.0"
 xmas-elf = "0.7.0"
 rv-plic = { git = "https://github.com/duskmoon314/rv-plic" }
+uart8250 = { version = "*", features = ["fmt"] }
 
 [features]
 board_qemu = []

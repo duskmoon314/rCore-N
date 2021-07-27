@@ -15,8 +15,9 @@ extern crate bitflags;
 #[macro_use]
 extern crate log;
 
-use rv_plic::Priority;
 use plic::Plic;
+use rv_plic::Priority;
+use uart::UART;
 
 #[macro_use]
 mod console;
@@ -33,6 +34,7 @@ mod syscall;
 mod task;
 mod timer;
 mod trap;
+#[macro_use]
 mod uart;
 
 global_asm!(include_str!("entry.asm"));
@@ -46,36 +48,23 @@ fn clear_bss() {
     (sbss as usize..ebss as usize).for_each(|a| unsafe { (a as *mut u8).write_volatile(0) });
 }
 
-#[macro_export]
-macro_rules! print_uart
-{
-	($($args:tt)+) => ({
-			use core::fmt::Write;
-			let _ = write!(crate::uart::Uart::new(0x1000_0000), $($args)+);
-			});
-}
-#[macro_export]
-macro_rules! println_uart
-{
-	() => ({
-		   print!("\r\n")
-		   });
-	($fmt:expr) => ({
-			print_uart!(concat!($fmt, "\r\n"))
-			});
-	($fmt:expr, $($args:tt)+) => ({
-			print_uart!(concat!($fmt, "\r\n"), $($args)+)
-			});
+fn hart_id() -> usize {
+    let hart_id: usize;
+    unsafe {
+        asm!("mv {}, tp", out(reg) hart_id);
+    }
+    hart_id
 }
 
 #[no_mangle]
 pub fn rust_main() -> ! {
     clear_bss();
-    uart::Uart::new(0x10000000).init();
+
     logger::init();
     debug!("[kernel] Hello, world!");
     mm::init();
     mm::remap_test();
+    uart::init();
     task::add_initproc();
     println!("initproc added to task manager!");
     trap::init();
