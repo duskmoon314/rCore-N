@@ -3,17 +3,18 @@ mod usertrap;
 
 use crate::config::{TRAMPOLINE, TRAP_CONTEXT};
 use crate::plic;
+use crate::sbi::set_timer;
 use crate::syscall::syscall;
 use crate::task::{
     current_task, current_trap_cx, current_user_token, exit_current_and_run_next,
     suspend_current_and_run_next,
 };
-use crate::timer::set_next_trigger;
+use crate::timer::{set_next_trigger, TIMER_MAP};
 use riscv::asm::ebreak;
 use riscv::register::{
     mtvec::TrapMode,
     scause::{self, Exception, Interrupt, Trap},
-    sepc, sideleg, sie, sstatus, stval, stvec,
+    sepc, sideleg, sie, sip, sstatus, stval, stvec, time,
 };
 
 global_asm!(include_str!("trap.asm"));
@@ -82,8 +83,35 @@ pub fn trap_handler() -> ! {
             exit_current_and_run_next(-3);
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            set_next_trigger();
-            suspend_current_and_run_next();
+            let current_time = time::read();
+            let mut timer_map = TIMER_MAP.lock();
+            while let Some((_, pid)) = timer_map.pop_first() {
+                if let Some((next_time, _)) = timer_map.first_key_value() {
+                    if *next_time < current_time {
+                        continue;
+                    } else {
+                        set_timer(*next_time);
+                    }
+                }
+                drop(timer_map);
+                if pid == 0 {
+                    set_next_trigger();
+                    suspend_current_and_run_next();
+                } else if pid == current_task().unwrap().pid.0 {
+                    unsafe {
+                        sip::set_utimer();
+                    }
+                } else {
+                    let _ = push_trap_record(
+                        pid,
+                        UserTrapRecord {
+                            cause: 4,
+                            message: current_time,
+                        },
+                    );
+                }
+                break;
+            }
         }
         Trap::Interrupt(Interrupt::SupervisorExternal) => {
             // debug!("Supervisor External");

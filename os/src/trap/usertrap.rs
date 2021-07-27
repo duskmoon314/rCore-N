@@ -74,8 +74,8 @@ lazy_static! {
 
 pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<usize, UserTrapError> {
     debug!(
-        "pushing trap record, cause: {:?}, message: {:?}",
-        trap_record.cause, trap_record.message
+        "[push trap record] pid: {}, cause: {}, message: {}",
+        pid, trap_record.cause, trap_record.message
     );
     if let Some(tcb) = crate::task::find_task(pid) {
         let mut tcb_inner = tcb.acquire_inner_lock();
@@ -90,6 +90,7 @@ pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<usize
             Err(UserTrapError::TrapUninitialized)
         }
     } else {
+        warn!("[push trap record] Task Not Found!");
         Err(UserTrapError::TaskNotFound)
     }
 }

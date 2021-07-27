@@ -19,12 +19,12 @@ lazy_static! {
 
 #[no_mangle]
 pub fn main() -> i32 {
-    println!("user mode serial demo using external interrupt");
+    println!("[uart ext] A user mode serial driver demo using external interrupt");
     let init_res = init_user_trap();
     let claim_res = claim_ext_int(uart::UART1_IRQN as usize);
     println!(
-        ">>> init result: {:?}, claim result: {:?}",
-        init_res, claim_res
+        "[uart ext] init result: 0x{:x?}, claim result: 0x{:x?}",
+        init_res as usize, claim_res
     );
     UART1.lock().init();
     println2!("Hello from UART1!");
@@ -235,7 +235,7 @@ mod user_trap {
         let utval = utval::read();
         match ucause.cause() {
             ucause::Trap::Interrupt(ucause::Interrupt::UserSoft) => {
-                println!("[user trap] user soft");
+                println!("[uart ext] user soft interrupt");
                 let trap_record_num = uscratch::read();
                 let mut head_ptr = USER_TRAP_BUFFER as *const UserTrapRecord;
                 for _ in 0..trap_record_num {
@@ -245,10 +245,17 @@ mod user_trap {
                         if cause & 0xF == 0 {
                             // "real" soft interrupt
                             let pid = cause >> 4;
-                            println!(
-                                "[user trap] Received message {} from pid {}",
-                                trap_record.message, pid
-                            );
+                            let msg = trap_record.message;
+                            if msg == 15 {
+                                println2!("[uart ext] Received SIGTERM, exiting...");
+                                user_lib::exit(15);
+                            } else {
+                                println2!(
+                                    "[uart ext] Received message 0x{:x} from pid {}",
+                                    msg,
+                                    pid
+                                );
+                            }
                         } else if ucause::Interrupt::from(cause) == ucause::Interrupt::UserExternal
                         {
                             if trap_record.message == UART1_IRQN as usize {
@@ -264,7 +271,7 @@ mod user_trap {
             }
             ucause::Trap::Interrupt(ucause::Interrupt::UserExternal) => {
                 if let Some(irq) = Plic::claim(2) {
-                    println!("[user trap] user external, irq: {}", irq);
+                    println!("[uart ext] user external interrupt, irq: {}", irq);
                     if irq == UART1_IRQN {
                         handle_input();
                     }

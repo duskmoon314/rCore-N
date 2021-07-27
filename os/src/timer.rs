@@ -7,6 +7,7 @@ use spin::Mutex;
 
 const TICKS_PER_SEC: usize = 100;
 const MSEC_PER_SEC: usize = 1000;
+pub const USEC_PER_SEC: usize = 1000_000;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -39,8 +40,14 @@ pub fn get_time_ms() -> usize {
     time::read() / (CLOCK_FREQ / MSEC_PER_SEC)
 }
 
+#[allow(dead_code)]
+pub fn get_time_us() -> usize {
+    time::read() * USEC_PER_SEC / CLOCK_FREQ
+}
+
 pub fn set_next_trigger() {
-    set_timer(time::read() + CLOCK_FREQ / TICKS_PER_SEC);
+    // set_timer(time::read() + CLOCK_FREQ / TICKS_PER_SEC);
+    set_virtual_timer(time::read() + CLOCK_FREQ / TICKS_PER_SEC, 0);
 }
 
 lazy_static! {
@@ -50,6 +57,7 @@ lazy_static! {
 
 pub fn set_virtual_timer(time: usize, pid: usize) {
     if time < time::read() {
+        warn!("Time travel unallowed!");
         return;
     }
     let mut timer_map = TIMER_MAP.lock();

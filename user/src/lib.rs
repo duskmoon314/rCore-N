@@ -180,8 +180,8 @@ pub fn send_msg(pid: usize, msg: usize) -> isize {
     sys_send_msg(pid, msg)
 }
 
-pub fn set_timer(time: usize) -> isize {
-    sys_set_timer(time)
+pub fn set_timer(time_us: isize) -> isize {
+    sys_set_timer(time_us)
 }
 
 pub fn claim_ext_int(device_id: usize) -> isize {

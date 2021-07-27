@@ -104,8 +104,8 @@ pub fn sys_send_msg(pid: usize, msg: usize) -> isize {
     syscall(SYSCALL_SEND_MSG, [pid as usize, msg as usize, 0])
 }
 
-pub fn sys_set_timer(time: usize) -> isize {
-    syscall(SYSCALL_SET_TIMER, [time as usize, 0, 0])
+pub fn sys_set_timer(time_us: isize) -> isize {
+    syscall(SYSCALL_SET_TIMER, [time_us as usize, 0, 0])
 }
 
 pub fn sys_claim_ext_int(device_id: usize) -> isize {
