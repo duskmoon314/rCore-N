@@ -1,2 +1,2 @@
 #!/bin/bash
-while true; do sleep 100; done
+while true; do sleep 1000; done

@@ -2,7 +2,7 @@ use super::TaskContext;
 use super::{pid_alloc, KernelStack, PidHandle};
 use crate::fs::{File, MailBox, Socket, Stdin, Stdout};
 use crate::mm::{translate_writable_va, MemorySet, PhysAddr, PhysPageNum, VirtAddr, KERNEL_SPACE};
-use crate::trap::{trap_handler, TrapContext, UserTrapError, UserTrapInfo, UserTrapRecord};
+use crate::trap::{trap_handler, TrapContext, UserTrapInfo};
 use crate::{
     config::{PAGE_SIZE, TRAP_CONTEXT, USER_TRAP_BUFFER},
     loader::get_app_data_by_name,
@@ -91,7 +91,7 @@ impl TaskControlBlockInner {
     }
 
     pub fn init_user_trap(&mut self) -> Result<isize, isize> {
-        use riscv::register::{sie, sstatus};
+        use riscv::register::sstatus;
         if let None = self.user_trap_info {
             // R | W
             if let Ok(_) = self.mmap(USER_TRAP_BUFFER, PAGE_SIZE, 0b11) {
@@ -103,10 +103,7 @@ impl TaskControlBlockInner {
                     devices: Vec::new(),
                 });
                 unsafe {
-                    sstatus::set_upie();
-                    sie::set_uext();
-                    sie::set_usoft();
-                    sie::set_utimer();
+                    sstatus::set_uie();
                 }
                 return Ok(USER_TRAP_BUFFER as isize);
             } else {

@@ -55,8 +55,13 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     // **** hold current PCB lock
     let mut inner = task.acquire_inner_lock();
     if let Some(trap_info) = &inner.user_trap_info {
-        trap_info.disable_user_ext_int();
         trap_info.remove_user_ext_int_map();
+        use riscv::register::sie;
+        unsafe {
+            sie::clear_uext();
+            sie::clear_usoft();
+            sie::clear_utimer();
+        }
     }
 
     // Change status to Zombie

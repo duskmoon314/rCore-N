@@ -29,3 +29,6 @@ debug_qemu: build
 
 debug: build disasm
     tmux new-session -d "{{QEMU}} -machine virt -serial /dev/pts/1 -serial /dev/pts/2 -nographic -bios ./rustsbi-qemu.bin -device loader,file={{KERNEL_BIN}},addr=0x80200000 -s -S" && tmux split-window -h "riscv64-unknown-elf-gdb -ex 'file {{KERNEL_ELF}}' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'" && tmux -2 attach-session -d
+
+debug_all: build disasm
+    tmux new-session -d "{{QEMU}} -machine virt -serial /dev/pts/1 -serial /dev/pts/2 -nographic -bios ./rustsbi-qemu.bin -device loader,file={{KERNEL_BIN}},addr=0x80200000 -d int -D debug.log -s -S" && tmux split-window -h "riscv64-unknown-elf-gdb -ex 'file {{KERNEL_ELF}}' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'" && tmux -2 attach-session -d

@@ -62,6 +62,10 @@ impl UserTrapInfo {
     pub fn remove_user_ext_int_map(&self) {
         let mut int_map = USER_EXT_INT_MAP.lock();
         for device_id in &self.devices {
+            Plic::claim(2);
+            Plic::complete(2, *device_id);
+            Plic::disable(2, *device_id);
+            Plic::enable(1, *device_id);
             int_map.remove(device_id);
         }
     }

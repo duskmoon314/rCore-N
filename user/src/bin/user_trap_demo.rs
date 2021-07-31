@@ -7,6 +7,7 @@ extern crate user_lib;
 extern crate alloc;
 
 use lazy_static::*;
+use riscv::register::uie;
 use spin::Mutex;
 use user_lib::{
     exit, get_time, init_user_trap, send_msg, set_timer, spawn, UserTrapContext, UserTrapRecord,
@@ -26,6 +27,11 @@ pub fn main() -> i32 {
         let time_us = get_time() * 1000;
         for i in 1..=10 {
             set_timer(time_us + i * 1000_000);
+        }
+        unsafe {
+            uie::set_uext();
+            uie::set_usoft();
+            uie::set_utimer();
         }
         loop {}
     } else {

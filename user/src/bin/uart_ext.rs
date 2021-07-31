@@ -8,11 +8,11 @@ extern crate alloc;
 
 use alloc::{string::String, sync::Arc};
 use lazy_static::*;
+use riscv::register::uie;
 use spin::Mutex;
 use uart::UART1_BASE_ADDRESS;
-use user_lib::{claim_ext_int, init_user_trap};
-
 use uart8250::MmioUart8250;
+use user_lib::{claim_ext_int, init_user_trap};
 
 lazy_static! {
     pub static ref LINE: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
@@ -31,6 +31,11 @@ pub fn main() -> i32 {
     );
     UART1.lock().init(11_059_200, 115200);
     println2!("Hello from UART1!");
+    unsafe {
+        uie::set_uext();
+        uie::set_usoft();
+        uie::set_utimer();
+    }
     loop {}
 }
 

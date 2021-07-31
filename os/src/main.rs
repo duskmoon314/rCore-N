@@ -72,6 +72,7 @@ pub fn rust_main() -> ! {
     loader::list_apps();
 
     Plic::set_threshold(1, Priority::any());
+    Plic::set_threshold(2, Priority::any());
     Plic::enable(1, 10);
     Plic::set_priority(9, Priority::lowest());
     Plic::set_priority(10, Priority::lowest());
