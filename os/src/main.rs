@@ -15,10 +15,6 @@ extern crate bitflags;
 #[macro_use]
 extern crate log;
 
-use plic::Plic;
-use rv_plic::Priority;
-use uart::UART;
-
 #[macro_use]
 mod console;
 mod config;
@@ -44,10 +40,20 @@ fn clear_bss() {
     extern "C" {
         fn sbss();
         fn ebss();
+        fn ebss_ma();
     }
+    #[cfg(feature = "board_lrv")]
+    println!(
+        "s_bss: {:#x?}, e_bss: {:#x?}, e_bss_ma: {:#x?}",
+        sbss as usize, ebss as usize, ebss_ma as usize
+    );
+    #[cfg(feature = "board_lrv")]
+    (sbss as usize..ebss_ma as usize).for_each(|a| unsafe { (a as *mut u8).write_volatile(0) });
+    #[cfg(feature = "board_qemu")]
     (sbss as usize..ebss as usize).for_each(|a| unsafe { (a as *mut u8).write_volatile(0) });
 }
 
+#[allow(dead_code)]
 fn hart_id() -> usize {
     let hart_id: usize;
     unsafe {
@@ -60,6 +66,12 @@ fn hart_id() -> usize {
 pub fn rust_main() -> ! {
     clear_bss();
 
+    // enable simulation log on rocket core
+    #[cfg(feature = "board_lrv")]
+    unsafe {
+        asm!("csrwi 0x800, 1");
+    }
+
     logger::init();
     debug!("[kernel] Hello, world!");
     mm::init();
@@ -71,11 +83,7 @@ pub fn rust_main() -> ! {
     timer::set_next_trigger();
     loader::list_apps();
 
-    Plic::set_threshold(1, Priority::any());
-    Plic::set_threshold(2, Priority::any());
-    Plic::enable(1, 10);
-    Plic::set_priority(9, Priority::lowest());
-    Plic::set_priority(10, Priority::lowest());
+    plic::init();
     println_uart!("uart print test");
     task::run_tasks();
     panic!("Unreachable in rust_main!");

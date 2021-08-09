@@ -3,14 +3,13 @@ use core::mem::size_of;
 use crate::loader::get_app_data_by_name;
 use crate::mm;
 use crate::plic::Plic;
-use crate::task::find_task;
 use crate::task::{
     add_task, current_task, current_user_token, exit_current_and_run_next, mmap, munmap,
     set_current_priority, suspend_current_and_run_next,
 };
 use crate::trap::{push_trap_record, UserTrapRecord};
 
-use crate::timer::{get_time, TIMER_MAP};
+use crate::timer::get_time;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 

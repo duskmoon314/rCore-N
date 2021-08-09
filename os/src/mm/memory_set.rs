@@ -155,10 +155,21 @@ impl MemorySet {
             None,
         );
         debug!("mapping uart");
+        #[cfg(feature = "board_qemu")]
         memory_set.push(
             MapArea::new(
                 (0x1000_0000 as usize).into(),
                 (0x1000_0200 as usize).into(),
+                MapType::Mmio,
+                MapPermission::R | MapPermission::W,
+            ),
+            None,
+        );
+        #[cfg(feature = "board_lrv")]
+        memory_set.push(
+            MapArea::new(
+                (0x6000_0000 as usize).into(),
+                (0x6000_4000 as usize).into(),
                 MapType::Mmio,
                 MapPermission::R | MapPermission::W,
             ),

@@ -1,5 +1,5 @@
 QEMU := "../../qemu-build/riscv64-softmmu/qemu-system-riscv64"
-TARGET := "riscv64gc-unknown-none-elf"
+TARGET := "riscv64imac-unknown-none-elf"
 MODE := "debug"
 OBJDUMP := "rust-objdump --arch-name=riscv64"
 OBJCOPY := "rust-objcopy --binary-architecture=riscv64"
@@ -18,7 +18,16 @@ build: user
     {{OBJCOPY}} {{KERNEL_ELF}} --strip-all -O binary {{KERNEL_BIN}}
     rm src/linker.ld
 
+build_lrv: user
+    cp src/linker-lrv.ld src/linker.ld
+    cargo build --features "board_lrv"
+    {{OBJCOPY}} {{KERNEL_ELF}} --strip-all -O binary {{KERNEL_BIN}}
+    rm src/linker.ld
+
 disasm: build
+    {{OBJDUMP}} -D -S {{KERNEL_ELF}} > {{KERNEL_ASM}}
+
+disasm_lrv: build_lrv
     {{OBJDUMP}} -D -S {{KERNEL_ELF}} > {{KERNEL_ASM}}
 
 run: build

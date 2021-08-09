@@ -1,8 +1,7 @@
 use super::File;
 use crate::console_blog::pop_stdin;
 use crate::mm::UserBuffer;
-use crate::sbi::console_getchar;
-use crate::task::suspend_current_and_run_next;
+// use crate::sbi::console_getchar;
 
 pub struct Stdin;
 
@@ -12,18 +11,9 @@ impl File for Stdin {
     fn read(&self, mut user_buf: UserBuffer) -> Result<usize, isize> {
         assert_eq!(user_buf.len(), 1);
         // busy loop
-        let mut c: usize;
-        // loop {
-        //     // c = console_getchar();
-        //     c = pop_stdin() as usize;
-        //     if c == 0 {
-        //         suspend_current_and_run_next();
-        //         continue;
-        //     } else {
-        //         break;
-        //     }
-        // }
-        c = pop_stdin() as usize;
+        let c = pop_stdin();
+        // c = console_getchar();
+
         let ch = c as u8;
         unsafe {
             user_buf.buffers[0].as_mut_ptr().write_volatile(ch);

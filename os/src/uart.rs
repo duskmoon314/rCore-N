@@ -4,16 +4,31 @@ use core::fmt::{self, Write};
 use alloc::sync::Arc;
 use lazy_static::*;
 use spin::Mutex;
+
+#[cfg(feature = "board_qemu")]
 use uart8250::MmioUart8250;
 
+#[cfg(feature = "board_qemu")]
 lazy_static! {
     pub static ref UART: Arc<Mutex<MmioUart8250>> =
         Arc::new(Mutex::new(MmioUart8250::new(0x1000_0000)));
 }
 
+#[cfg(feature = "board_lrv")]
+use uart_xilinx::MmioUartAxiLite;
+
+#[cfg(feature = "board_lrv")]
+lazy_static! {
+    pub static ref UART: Arc<Mutex<MmioUartAxiLite<'static>>> =
+        Arc::new(Mutex::new(MmioUartAxiLite::new(0x6000_0000)));
+}
+
 pub fn init() {
-    let uart = UART.lock();
-    uart.init(11_059_200, 115200);
+    #[cfg(feature = "board_qemu")]
+    {
+        let uart = UART.lock();
+        uart.init(11_059_200, 115200);
+    }
 }
 
 pub fn print_uart(args: fmt::Arguments) {

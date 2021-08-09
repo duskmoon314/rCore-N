@@ -1,12 +1,12 @@
+use rv_plic::Priority;
 use rv_plic::PLIC;
 
-use crate::task::find_task;
 use crate::trap::{push_trap_record, UserTrapRecord, USER_EXT_INT_MAP};
 use crate::uart;
 
-#[cfg(feature = "board_qemu")]
+#[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 pub const PLIC_BASE: usize = 0xc00_0000;
-#[cfg(feature = "board_qemu")]
+#[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 pub const PLIC_PRIORITY_BIT: usize = 3;
 
 pub type Plic = PLIC<PLIC_BASE, PLIC_PRIORITY_BIT>;
@@ -40,7 +40,13 @@ pub fn handle_external_interrupt() {
         }
         if !can_user_handle {
             match irq {
+                #[cfg(feature = "board_qemu")]
                 10 => {
+                    uart::handle_interrupt();
+                    debug!("[PLIC] kenel handling uart");
+                }
+                #[cfg(feature = "board_lrv")]
+                3 => {
                     uart::handle_interrupt();
                     debug!("[PLIC] kenel handling uart");
                 }
@@ -50,5 +56,21 @@ pub fn handle_external_interrupt() {
             }
         }
         Plic::complete(get_context(0, 'S'), irq)
+    }
+}
+
+pub fn init() {
+    Plic::set_threshold(1, Priority::any());
+    Plic::set_threshold(2, Priority::any());
+    Plic::enable(1, 10);
+    #[cfg(feature = "board_qemu")]
+    {
+        Plic::set_priority(9, Priority::lowest());
+        Plic::set_priority(10, Priority::lowest());
+    }
+    #[cfg(feature = "board_lrv")]
+    {
+        Plic::set_priority(3, Priority::lowest());
+        Plic::set_priority(4, Priority::lowest());
     }
 }
