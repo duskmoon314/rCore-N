@@ -62,14 +62,15 @@ pub fn handle_external_interrupt() {
 pub fn init() {
     Plic::set_threshold(1, Priority::any());
     Plic::set_threshold(2, Priority::any());
-    Plic::enable(1, 10);
     #[cfg(feature = "board_qemu")]
     {
+        Plic::enable(1, 10);
         Plic::set_priority(9, Priority::lowest());
         Plic::set_priority(10, Priority::lowest());
     }
     #[cfg(feature = "board_lrv")]
     {
+        Plic::enable(1, 3);
         Plic::set_priority(3, Priority::lowest());
         Plic::set_priority(4, Priority::lowest());
     }

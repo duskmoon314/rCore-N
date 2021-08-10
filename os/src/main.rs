@@ -40,16 +40,7 @@ fn clear_bss() {
     extern "C" {
         fn sbss();
         fn ebss();
-        fn ebss_ma();
     }
-    #[cfg(feature = "board_lrv")]
-    println!(
-        "s_bss: {:#x?}, e_bss: {:#x?}, e_bss_ma: {:#x?}",
-        sbss as usize, ebss as usize, ebss_ma as usize
-    );
-    #[cfg(feature = "board_lrv")]
-    (sbss as usize..ebss_ma as usize).for_each(|a| unsafe { (a as *mut u8).write_volatile(0) });
-    #[cfg(feature = "board_qemu")]
     (sbss as usize..ebss as usize).for_each(|a| unsafe { (a as *mut u8).write_volatile(0) });
 }
 
@@ -72,18 +63,18 @@ pub fn rust_main() -> ! {
         asm!("csrwi 0x800, 1");
     }
 
+    mm::init();
+    trap::init();
+    plic::init();
+    uart::init();
     logger::init();
     debug!("[kernel] Hello, world!");
-    mm::init();
     mm::remap_test();
-    uart::init();
     task::add_initproc();
     println!("initproc added to task manager!");
-    trap::init();
     timer::set_next_trigger();
     loader::list_apps();
 
-    plic::init();
     println_uart!("uart print test");
     task::run_tasks();
     panic!("Unreachable in rust_main!");

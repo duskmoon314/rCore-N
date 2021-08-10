@@ -8,6 +8,7 @@ BUILD_PATH := "target/" + TARGET + "/" + MODE + "/"
 KERNEL_ELF := BUILD_PATH + "os"
 KERNEL_ASM := BUILD_PATH + "os.asm"
 KERNEL_BIN := BUILD_PATH + "os.bin"
+KERNEL_BIN_LRV := BUILD_PATH + "rcore-n.bin"
 
 user:
     cd ../user && make build
@@ -22,6 +23,7 @@ build_lrv: user
     cp src/linker-lrv.ld src/linker.ld
     cargo build --features "board_lrv"
     {{OBJCOPY}} {{KERNEL_ELF}} --strip-all -O binary {{KERNEL_BIN}}
+    cp {{KERNEL_BIN}} {{KERNEL_BIN_LRV}}
     rm src/linker.ld
 
 disasm: build

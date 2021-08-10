@@ -1,4 +1,4 @@
-use crate::console_blog::push_stdin;
+use crate::console_blog::{IN_BUFFER, OUT_BUFFER};
 use core::fmt::{self, Write};
 
 use alloc::sync::Arc;
@@ -29,6 +29,8 @@ pub fn init() {
         let uart = UART.lock();
         uart.init(11_059_200, 115200);
     }
+    #[cfg(feature = "board_lrv")]
+    UART.lock().enable_interrupt();
 }
 
 pub fn print_uart(args: fmt::Arguments) {
@@ -49,6 +51,7 @@ macro_rules! println_uart {
     }
 }
 
+#[cfg(feature = "board_qemu")]
 pub fn handle_interrupt() {
     if let Some(c) = UART.lock().read_byte() {
         push_stdin(c);
@@ -67,5 +70,35 @@ pub fn handle_interrupt() {
         //         print_uart!("{}", c as char);
         //     }
         // }
+    }
+}
+
+#[cfg(feature = "board_lrv")]
+const FIFO_DEPTH: usize = 16;
+
+#[cfg(feature = "board_lrv")]
+pub fn handle_interrupt() {
+    use uart_xilinx::uart_lite::Status;
+    let uart = UART.lock();
+    let status = uart.status();
+    if status.contains(Status::TX_FIFO_EMPTY) {
+        let mut stdout = OUT_BUFFER.lock();
+        for _ in 0..FIFO_DEPTH {
+            if let Some(ch) = stdout.pop_front() {
+                uart.write_byte(ch);
+            } else {
+                break;
+            }
+        }
+    }
+    if status.contains(Status::RX_FIFO_FULL) {
+        let mut stdin = IN_BUFFER.lock();
+        for _ in 0..FIFO_DEPTH {
+            if let Some(ch) = uart.read_byte() {
+                stdin.push_back(ch);
+            } else {
+                break;
+            }
+        }
     }
 }

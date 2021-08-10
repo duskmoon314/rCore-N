@@ -16,7 +16,7 @@ use user_lib::{claim_ext_int, init_user_trap};
 
 lazy_static! {
     pub static ref LINE: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
-    pub static ref UART1: Arc<Mutex<MmioUart8250>> =
+    pub static ref UART1: Arc<Mutex<MmioUart8250<'static>>> =
         Arc::new(Mutex::new(MmioUart8250::new(UART1_BASE_ADDRESS)));
 }
 

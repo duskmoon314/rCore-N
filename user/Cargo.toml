@@ -15,3 +15,8 @@ riscv = { git = "https://github.com/duskmoon314/riscv", branch = "extN", feature
 spin = "0.7.0"
 rv-plic = { git = "https://github.com/duskmoon314/rv-plic" }
 uart8250 = { version = "*", features = ["fmt"] }
+
+# Only for compatibility, no real effect
+[features]
+board_qemu = []
+board_lrv = []
