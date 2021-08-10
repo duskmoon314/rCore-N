@@ -18,9 +18,15 @@ lazy_static! {
 #[cfg(feature = "board_qemu")]
 #[allow(dead_code)]
 pub fn push_stdout(c: u8) {
-    let mut out_buffer = OUT_BUFFER.lock();
-    if out_buffer.len() < DEFAULT_OUT_BUFFER_SIZE {
-        out_buffer.push_back(c);
+    let uart = uart::UART.lock();
+    if !uart.is_transmitter_holding_register_empty_interrupt_enabled() {
+        uart.write_byte(c);
+        uart.enable_transmitter_holding_register_empty_interrupt();
+    } else {
+        let mut out_buffer = OUT_BUFFER.lock();
+        if out_buffer.len() < DEFAULT_OUT_BUFFER_SIZE {
+            out_buffer.push_back(c);
+        }
     }
 }
 
@@ -57,9 +63,9 @@ pub fn pop_stdin() -> u8 {
     if let Some(ch) = in_buffer.pop_front() {
         ch
     } else {
-        #[cfg(feature = "board_lrv")]
+        #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
         {
-            // drain Rx FIFO
+            // Drain UART Rx FIFO
             let uart = uart::UART.lock();
             while let Some(ch_read) = uart.read_byte() {
                 in_buffer.push_back(ch_read);

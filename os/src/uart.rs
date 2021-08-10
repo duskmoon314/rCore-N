@@ -10,7 +10,7 @@ use uart8250::MmioUart8250;
 
 #[cfg(feature = "board_qemu")]
 lazy_static! {
-    pub static ref UART: Arc<Mutex<MmioUart8250>> =
+    pub static ref UART: Arc<Mutex<MmioUart8250<'static>>> =
         Arc::new(Mutex::new(MmioUart8250::new(0x1000_0000)));
 }
 
@@ -23,13 +23,16 @@ lazy_static! {
         Arc::new(Mutex::new(MmioUartAxiLite::new(0x6000_0000)));
 }
 
+#[cfg(feature = "board_qemu")]
 pub fn init() {
-    #[cfg(feature = "board_qemu")]
-    {
-        let uart = UART.lock();
-        uart.init(11_059_200, 115200);
-    }
-    #[cfg(feature = "board_lrv")]
+    let uart = UART.lock();
+    uart.init(11_059_200, 115200);
+    // Rx FIFO trigger level=14, reset Rx & Tx FIFO, enable FIFO
+    uart.write_fcr(0b11_000_11_1);
+}
+
+#[cfg(feature = "board_lrv")]
+pub fn init() {
     UART.lock().enable_interrupt();
 }
 
@@ -51,30 +54,41 @@ macro_rules! println_uart {
     }
 }
 
+#[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+const FIFO_DEPTH: usize = 16;
+
 #[cfg(feature = "board_qemu")]
 pub fn handle_interrupt() {
-    if let Some(c) = UART.lock().read_byte() {
-        push_stdin(c);
-        // match c {
-        //     8 => {
-        //         // This is a backspace, so we
-        //         // essentially have to write a space and
-        //         // backup again:
-        //         print_uart!("{} {}", 8 as char, 8 as char);
-        //     }
-        //     10 | 13 => {
-        //         // Newline or carriage-return
-        //         println_uart!();
-        //     }
-        //     _ => {
-        //         print_uart!("{}", c as char);
-        //     }
-        // }
+    let uart = UART.lock();
+    let int_id = uart.read_iir();
+    // No interrupt is pending
+    if int_id & 0b1 == 1 {
+        return;
+    }
+    let int_id = (int_id >> 1) & 0b111;
+    match int_id {
+        // Received Data Available
+        0b010 => {
+            let mut stdin = IN_BUFFER.lock();
+            while let Some(ch) = uart.read_byte() {
+                stdin.push_back(ch);
+            }
+        }
+        // Transmitter Holding Register Empty
+        0b001 => {
+            let mut stdout = OUT_BUFFER.lock();
+            for _ in 0..FIFO_DEPTH {
+                if let Some(ch) = stdout.pop_front() {
+                    uart.write_byte(ch);
+                } else {
+                    uart.disable_transmitter_holding_register_empty_interrupt();
+                    break;
+                }
+            }
+        }
+        _ => {}
     }
 }
-
-#[cfg(feature = "board_lrv")]
-const FIFO_DEPTH: usize = 16;
 
 #[cfg(feature = "board_lrv")]
 pub fn handle_interrupt() {

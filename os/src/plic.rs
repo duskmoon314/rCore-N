@@ -24,7 +24,7 @@ pub fn get_context(hartid: usize, mode: char) -> usize {
 
 pub fn handle_external_interrupt() {
     if let Some(irq) = Plic::claim(get_context(0, 'S')) {
-        debug!("[PLIC] IRQ: {:?}", irq);
+        // debug!("[PLIC] IRQ: {:?}", irq);
         let mut can_user_handle = false;
         if let Some(pid) = USER_EXT_INT_MAP.lock().get(&irq) {
             debug!("[PLIC] irq mapped to pid {:?}", pid);
@@ -43,7 +43,7 @@ pub fn handle_external_interrupt() {
                 #[cfg(feature = "board_qemu")]
                 10 => {
                     uart::handle_interrupt();
-                    debug!("[PLIC] kenel handling uart");
+                    // debug!("[PLIC] kenel handling uart");
                 }
                 #[cfg(feature = "board_lrv")]
                 3 => {
