@@ -6,104 +6,282 @@
 extern crate user_lib;
 extern crate alloc;
 
-use alloc::{string::String, sync::Arc};
-use lazy_static::*;
+use alloc::string::String;
 use riscv::register::uie;
-use spin::Mutex;
-use uart::UART1_BASE_ADDRESS;
-use uart8250::MmioUart8250;
-use user_lib::{claim_ext_int, init_user_trap};
+use user_console::pop_stdin;
+use user_lib::{claim_ext_int, init_user_trap, yield_};
 
-lazy_static! {
-    pub static ref LINE: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
-    pub static ref UART1: Arc<Mutex<MmioUart8250<'static>>> =
-        Arc::new(Mutex::new(MmioUart8250::new(UART1_BASE_ADDRESS)));
-}
+const LF: u8 = 0x0au8;
+const CR: u8 = 0x0du8;
+const DL: u8 = 0x7fu8;
+const BS: u8 = 0x08u8;
 
 #[no_mangle]
 pub fn main() -> i32 {
     println!("[uart ext] A user mode serial driver demo using external interrupt");
     let init_res = init_user_trap();
-    let claim_res = claim_ext_int(uart::UART1_IRQN as usize);
+    let claim_res = claim_ext_int(uart::UART_IRQN as usize);
     println!(
         "[uart ext] init result: 0x{:x?}, claim result: 0x{:x?}",
         init_res as usize, claim_res
     );
-    UART1.lock().init(11_059_200, 115200);
-    println2!("Hello from UART1!");
-    unsafe {
-        uie::set_uext();
-        uie::set_usoft();
-        uie::set_utimer();
-    }
-    loop {}
-}
-
-#[macro_export]
-macro_rules! print2 {
-    ($fmt: literal $(, $($arg: tt)+)?) => {
-        $crate::uart::print(format_args!($fmt $(, $($arg)+)?));
-    }
-}
-
-#[macro_export]
-macro_rules! println2 {
-    ($fmt: literal $(, $($arg: tt)+)?) => {
-        $crate::uart::print(format_args!(concat!($fmt, "\r\n") $(, $($arg)+)?));
-    }
-}
-
-mod uart {
-    // Based on https://github.com/sgmarz/osblog
-    pub const UART1_BASE_ADDRESS: usize = 0x10000100;
-    pub const UART1_IRQN: u16 = 9;
-
-    const LF: u8 = 0x0au8;
-    const CR: u8 = 0x0du8;
-    const DL: u8 = 0x7fu8;
-    const BS: u8 = 0x08u8;
-
-    use crate::UART1;
-    use core::fmt::{self, Write};
-
-    pub fn print(args: fmt::Arguments) {
-        UART1.lock().write_fmt(args).unwrap();
-    }
-
-    pub fn handle_input() {
-        // If we get here, the UART better have something! If not, what happened??
-        let uart1 = UART1.lock();
-        if let Some(c) = uart1.read_byte() {
+    uart::init();
+    user_println!("Hello from user UART!");
+    let mut line = String::new();
+    loop {
+        unsafe {
+            uie::clear_uext();
+            uie::clear_usoft();
+            uie::clear_utimer();
+        }
+        let c = pop_stdin();
+        if c != 0 {
             // If you recognize this code, it used to be in the lib.rs under kmain(). That
             // was because we needed to poll for UART data. Now that we have interrupts,
             // here it goes!
-            drop(uart1);
-            let mut line = crate::LINE.lock();
             match c {
                 LF | CR => {
-                    println2!("");
-                    if *line == "exit" {
+                    user_println!("");
+                    if line == "exit" {
                         user_lib::exit(0);
                     }
-                    println2!("{}", line);
+                    user_println!("{}", line);
                     line.clear();
                 }
                 BS | DL => {
                     if !line.is_empty() {
-                        print2!("{}", BS as char);
-                        print2!(" ");
-                        print2!("{}", BS as char);
+                        user_print!("{}", BS as char);
+                        user_print!(" ");
+                        user_print!("{}", BS as char);
                         line.pop();
                     }
                 }
                 _ => {
-                    print2!("{}", c as char);
+                    user_print!("{}", c as char);
                     line.push(c as char);
+                }
+            }
+        }
+        unsafe {
+            uie::set_uext();
+            uie::set_usoft();
+            uie::set_utimer();
+        }
+        yield_();
+    }
+}
+
+#[macro_export]
+macro_rules! user_print {
+    ($fmt: literal $(, $($arg: tt)+)?) => {
+        $crate::user_console::print(format_args!($fmt $(, $($arg)+)?));
+    }
+}
+
+#[macro_export]
+macro_rules! user_println {
+    ($fmt: literal $(, $($arg: tt)+)?) => {
+        $crate::user_console::print(format_args!(concat!($fmt, "\r\n") $(, $($arg)+)?));
+    }
+}
+
+#[cfg(feature = "board_qemu")]
+pub mod uart {
+    use crate::user_console::{IN_BUFFER, OUT_BUFFER};
+    use alloc::sync::Arc;
+    use lazy_static::*;
+    use spin::Mutex;
+    use uart8250::MmioUart8250;
+    pub const UART_BASE_ADDRESS: usize = 0x1000_0100;
+    pub const UART_IRQN: u16 = 9;
+
+    lazy_static! {
+        pub static ref UART: Arc<Mutex<MmioUart8250<'static>>> =
+            Arc::new(Mutex::new(MmioUart8250::new(UART_BASE_ADDRESS)));
+    }
+
+    pub fn init() {
+        let uart = UART.lock();
+        uart.init(11_059_200, 115200);
+        // Rx FIFO trigger level=14, reset Rx & Tx FIFO, enable FIFO
+        uart.write_fcr(0b11_000_11_1);
+    }
+
+    const FIFO_DEPTH: usize = 16;
+
+    pub fn handle_interrupt() {
+        let uart = UART.lock();
+        let int_id = uart.read_iir();
+        // No interrupt is pending
+        if int_id & 0b1 == 1 {
+            return;
+        }
+        let int_id = (int_id >> 1) & 0b111;
+        match int_id {
+            // Received Data Available
+            0b010 => {
+                let mut stdin = IN_BUFFER.lock();
+                while let Some(ch) = uart.read_byte() {
+                    stdin.push_back(ch);
+                }
+            }
+            // Transmitter Holding Register Empty
+            0b001 => {
+                let mut stdout = OUT_BUFFER.lock();
+                for _ in 0..FIFO_DEPTH {
+                    if let Some(ch) = stdout.pop_front() {
+                        uart.write_byte(ch);
+                    } else {
+                        uart.disable_transmitter_holding_register_empty_interrupt();
+                        break;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+#[cfg(feature = "board_lrv")]
+mod uart {
+    use uart_xilinx::MmioUartAxiLite;
+
+    pub const UART_BASE_ADDRESS: usize = 0x6000_2000;
+    pub const UART_IRQN: u16 = 4;
+
+    lazy_static! {
+        pub static ref UART: Arc<Mutex<MmioUartAxiLite<'static>>> =
+            Arc::new(Mutex::new(MmioUartAxiLite::new(UART_BASE_ADDRESS)));
+    }
+
+    pub fn init() {
+        UART.lock().enable_interrupt();
+    }
+
+    const FIFO_DEPTH: usize = 16;
+    pub fn handle_interrupt() {
+        use uart_xilinx::uart_lite::Status;
+        let uart = UART.lock();
+        let status = uart.status();
+        if status.contains(Status::TX_FIFO_EMPTY) {
+            let mut stdout = OUT_BUFFER.lock();
+            for _ in 0..FIFO_DEPTH {
+                if let Some(ch) = stdout.pop_front() {
+                    uart.write_byte(ch);
+                } else {
+                    break;
+                }
+            }
+        }
+        if status.contains(Status::RX_FIFO_FULL) {
+            let mut stdin = IN_BUFFER.lock();
+            for _ in 0..FIFO_DEPTH {
+                if let Some(ch) = uart.read_byte() {
+                    stdin.push_back(ch);
+                } else {
+                    break;
                 }
             }
         }
     }
 }
+
+mod user_console {
+    // Based on https://github.com/sgmarz/osblog
+
+    use super::uart::UART;
+    use alloc::{collections::VecDeque, sync::Arc};
+    use core::fmt::{self, Write};
+    use lazy_static::*;
+    use spin::Mutex;
+
+    pub const DEFAULT_OUT_BUFFER_SIZE: usize = 1_000;
+    pub const DEFAULT_IN_BUFFER_SIZE: usize = 1_000;
+
+    lazy_static! {
+        pub static ref IN_BUFFER: Arc<Mutex<VecDeque<u8>>> =
+            Arc::new(Mutex::new(VecDeque::with_capacity(DEFAULT_IN_BUFFER_SIZE)));
+        pub static ref OUT_BUFFER: Arc<Mutex<VecDeque<u8>>> =
+            Arc::new(Mutex::new(VecDeque::with_capacity(DEFAULT_OUT_BUFFER_SIZE)));
+    }
+
+    #[cfg(feature = "board_qemu")]
+    #[allow(dead_code)]
+    pub fn push_stdout(c: u8) {
+        let uart = UART.lock();
+        if !uart.is_transmitter_holding_register_empty_interrupt_enabled() {
+            uart.write_byte(c);
+            uart.enable_transmitter_holding_register_empty_interrupt();
+        } else {
+            let mut out_buffer = OUT_BUFFER.lock();
+            if out_buffer.len() < DEFAULT_OUT_BUFFER_SIZE {
+                out_buffer.push_back(c);
+            }
+        }
+    }
+
+    #[cfg(feature = "board_lrv")]
+    #[allow(dead_code)]
+    pub fn push_stdout(c: u8) {
+        let uart = uart::UART.lock();
+        if uart.is_tx_fifo_empty() {
+            uart.write_byte(c);
+        } else {
+            let mut out_buffer = OUT_BUFFER.lock();
+            if out_buffer.len() < DEFAULT_OUT_BUFFER_SIZE {
+                out_buffer.push_back(c);
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn pop_stdout() -> u8 {
+        let mut out_buffer = OUT_BUFFER.lock();
+        out_buffer.pop_front().unwrap_or(0)
+    }
+
+    #[allow(dead_code)]
+    pub fn push_stdin(c: u8) {
+        let mut in_buffer = IN_BUFFER.lock();
+        if in_buffer.len() < DEFAULT_IN_BUFFER_SIZE {
+            in_buffer.push_back(c);
+        }
+    }
+
+    pub fn pop_stdin() -> u8 {
+        let mut in_buffer = IN_BUFFER.lock();
+        if let Some(ch) = in_buffer.pop_front() {
+            ch
+        } else {
+            #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+            {
+                // Drain UART Rx FIFO
+                let uart = UART.lock();
+                while let Some(ch_read) = uart.read_byte() {
+                    in_buffer.push_back(ch_read);
+                }
+            }
+            in_buffer.pop_front().unwrap_or(0)
+        }
+    }
+
+    struct UserStdout;
+
+    impl Write for UserStdout {
+        fn write_str(&mut self, s: &str) -> fmt::Result {
+            for c in s.chars() {
+                push_stdout(c as u8);
+            }
+            Ok(())
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn print(args: fmt::Arguments) {
+        UserStdout.write_fmt(args).unwrap();
+    }
+}
+
 mod user_trap {
     use riscv::register::{ucause, uepc, uip, uscratch, utval};
     use user_lib::{UserTrapContext, UserTrapRecord};
@@ -118,7 +296,7 @@ mod user_trap {
     pub const PLIC_PRIORITY_BIT: usize = 3;
     pub type Plic = PLIC<PLIC_BASE, PLIC_PRIORITY_BIT>;
 
-    use crate::uart::{handle_input, UART1_IRQN};
+    use crate::uart::{handle_interrupt, UART_IRQN};
 
     #[no_mangle]
     pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
@@ -126,7 +304,6 @@ mod user_trap {
         let utval = utval::read();
         match ucause.cause() {
             ucause::Trap::Interrupt(ucause::Interrupt::UserSoft) => {
-                println!("[uart ext] user soft interrupt");
                 let trap_record_num = uscratch::read();
                 let mut head_ptr = USER_TRAP_BUFFER as *const UserTrapRecord;
                 for _ in 0..trap_record_num {
@@ -138,10 +315,10 @@ mod user_trap {
                             let pid = cause >> 4;
                             let msg = trap_record.message;
                             if msg == 15 {
-                                println2!("[uart ext] Received SIGTERM, exiting...");
+                                user_println!("[uart ext] Received SIGTERM, exiting...");
                                 user_lib::exit(15);
                             } else {
-                                println2!(
+                                user_println!(
                                     "[uart ext] Received message 0x{:x} from pid {}",
                                     msg,
                                     pid
@@ -149,8 +326,10 @@ mod user_trap {
                             }
                         } else if ucause::Interrupt::from(cause) == ucause::Interrupt::UserExternal
                         {
-                            if trap_record.message == UART1_IRQN as usize {
-                                handle_input();
+                            let irq = trap_record.message as u16;
+                            println!("[uart ext] Received UEI from kernel, irq: {}", irq);
+                            if irq == UART_IRQN {
+                                handle_interrupt();
                             }
                         }
                         head_ptr = head_ptr.offset(1);
@@ -163,8 +342,8 @@ mod user_trap {
             ucause::Trap::Interrupt(ucause::Interrupt::UserExternal) => {
                 if let Some(irq) = Plic::claim(2) {
                     println!("[uart ext] user external interrupt, irq: {}", irq);
-                    if irq == UART1_IRQN {
-                        handle_input();
+                    if irq == UART_IRQN {
+                        handle_interrupt();
                     }
                     Plic::complete(2, irq);
                 }

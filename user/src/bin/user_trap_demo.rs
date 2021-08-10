@@ -10,7 +10,8 @@ use lazy_static::*;
 use riscv::register::uie;
 use spin::Mutex;
 use user_lib::{
-    exit, get_time, init_user_trap, send_msg, set_timer, spawn, UserTrapContext, UserTrapRecord,
+    exit, get_time, init_user_trap, send_msg, set_timer, spawn, yield_, UserTrapContext,
+    UserTrapRecord,
 };
 
 lazy_static! {
@@ -33,7 +34,9 @@ pub fn main() -> i32 {
             uie::set_usoft();
             uie::set_utimer();
         }
-        loop {}
+        loop {
+            yield_();
+        }
     } else {
         println!("[trap demo] spawn failed!");
     }

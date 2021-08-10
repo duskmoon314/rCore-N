@@ -20,7 +20,7 @@ use uart_xilinx::MmioUartAxiLite;
 #[cfg(feature = "board_lrv")]
 lazy_static! {
     pub static ref UART: Arc<Mutex<MmioUartAxiLite<'static>>> =
-        Arc::new(Mutex::new(MmioUartAxiLite::new(0x6000_0000)));
+        Arc::new(Mutex::new(MmioUartAxiLite::new(0x6000_1000)));
 }
 
 #[cfg(feature = "board_qemu")]
@@ -36,6 +36,7 @@ pub fn init() {
     UART.lock().enable_interrupt();
 }
 
+#[allow(dead_code)]
 pub fn print_uart(args: fmt::Arguments) {
     UART.lock().write_fmt(args).unwrap();
 }
