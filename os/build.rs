@@ -7,7 +7,7 @@ fn main() {
     insert_app_data().unwrap();
 }
 
-static TARGET_PATH: &str = "../user/target/riscv64gc-unknown-none-elf/debug/";
+static TARGET_PATH: &str = "../user/target/riscv64imac-unknown-none-elf/debug/";
 
 fn insert_app_data() -> Result<()> {
     let mut f = File::create("src/link_app.asm").unwrap();
