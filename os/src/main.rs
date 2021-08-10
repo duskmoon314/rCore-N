@@ -15,9 +15,7 @@ extern crate bitflags;
 #[macro_use]
 extern crate log;
 
-use plic::Plic;
-use rv_plic::Priority;
-use uart::UART;
+use crate::{mm::init_kernel_space, sbi::send_ipi};
 
 #[macro_use]
 mod console;
@@ -48,35 +46,65 @@ fn clear_bss() {
     (sbss as usize..ebss as usize).for_each(|a| unsafe { (a as *mut u8).write_volatile(0) });
 }
 
-fn hart_id() -> usize {
-    let hart_id: usize;
-    unsafe {
-        asm!("mv {}, tp", out(reg) hart_id);
-    }
-    hart_id
-}
-
 #[no_mangle]
-pub fn rust_main() -> ! {
-    clear_bss();
+pub fn rust_main(hart_id: usize) -> ! {
+    if hart_id == 0 {
+        clear_bss();
+        mm::init();
+        uart::init();
+        logger::init();
+        debug!("[kernel {}] Hello, world!", hart_id);
 
-    logger::init();
-    debug!("[kernel] Hello, world!");
-    mm::init();
-    mm::remap_test();
-    uart::init();
-    task::add_initproc();
-    println!("initproc added to task manager!");
-    trap::init();
+        extern "C" {
+            fn boot_stack();
+            fn boot_stack_top();
+        }
+
+        debug!(
+            "boot_stack {:x} top {:x}",
+            boot_stack as usize, boot_stack_top as usize
+        );
+
+        mm::remap_test();
+
+        plic::init();
+        plic::init_hart(hart_id);
+
+        trap::init();
+
+        debug!("trying to add initproc");
+        task::add_initproc();
+        println!("initproc added to task manager!");
+
+        unsafe {
+            let satp: usize;
+            asm!("csrr {}, satp", out(reg) satp);
+            println_hart!("satp {}", hart_id, satp);
+        }
+
+        for i in 1..4 {
+            debug!("[kernel {}] Start {}", hart_id, i);
+            let mask: usize = 1 << i;
+            send_ipi(&mask as *const _ as usize);
+        }
+    } else {
+        let hart_id = task::hart_id();
+
+        init_kernel_space();
+
+        unsafe {
+            let satp: usize;
+            asm!("csrr {}, satp", out(reg) satp);
+            println_hart!("satp {}", hart_id, satp);
+        }
+        trap::init();
+    }
+
+    println_hart!("Hello", hart_id);
+
     timer::set_next_trigger();
-    loader::list_apps();
+    // loader::list_apps();
 
-    Plic::set_threshold(1, Priority::any());
-    Plic::set_threshold(2, Priority::any());
-    Plic::enable(1, 10);
-    Plic::set_priority(9, Priority::lowest());
-    Plic::set_priority(10, Priority::lowest());
-    println_uart!("uart print test");
     task::run_tasks();
     panic!("Unreachable in rust_main!");
 }

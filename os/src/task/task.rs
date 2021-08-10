@@ -343,6 +343,26 @@ impl TaskControlBlock {
     }
 }
 
+impl PartialEq for TaskControlBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.pid == other.pid
+    }
+}
+
+impl Eq for TaskControlBlock {}
+
+impl PartialOrd for TaskControlBlock {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TaskControlBlock {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.pid.cmp(&other.pid)
+    }
+}
+
 #[derive(Copy, Clone, PartialEq)]
 pub enum TaskStatus {
     Ready,

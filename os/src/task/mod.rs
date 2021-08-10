@@ -1,6 +1,7 @@
 mod context;
 mod manager;
 mod pid;
+mod pool;
 mod processor;
 mod switch;
 mod task;
@@ -8,15 +9,15 @@ mod task;
 use crate::loader::get_app_data_by_name;
 use alloc::sync::Arc;
 use lazy_static::*;
-use manager::fetch_task;
+
 use switch::__switch;
 use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
-pub use manager::{add_task, find_task};
 pub use pid::{pid_alloc, KernelStack, PidHandle};
+pub use pool::{add_task, fetch_task, find_task};
 pub use processor::{
-    current_task, current_trap_cx, current_user_token, mmap, munmap, run_tasks, schedule,
+    current_task, current_trap_cx, current_user_token, hart_id, mmap, munmap, run_tasks, schedule,
     set_current_priority, take_current_task,
 };
 
@@ -105,5 +106,6 @@ lazy_static! {
 }
 
 pub fn add_initproc() {
+    debug!("add_initproc");
     add_task(INITPROC.clone());
 }

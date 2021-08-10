@@ -181,6 +181,9 @@ pub extern "C" fn trap_from_kernel() {
             );
             panic!("a trap {:?} from kernel!", scause::read().cause());
         }
+        Trap::Interrupt(Interrupt::SupervisorSoft) => {
+            debug!("SupervisorSoft");
+        }
     }
 }
 

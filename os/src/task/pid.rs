@@ -39,6 +39,7 @@ lazy_static! {
     static ref PID_ALLOCATOR: Mutex<PidAllocator> = Mutex::new(PidAllocator::new());
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct PidHandle(pub usize);
 
 impl Drop for PidHandle {

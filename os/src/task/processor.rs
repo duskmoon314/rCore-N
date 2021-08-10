@@ -3,8 +3,22 @@ use super::__switch;
 use super::{fetch_task, TaskStatus};
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::cell::RefCell;
 use lazy_static::*;
+use spin::Mutex;
+
+const CPU_NUM: usize = 4;
+
+lazy_static! {
+    pub static ref PROCESSORS: Vec<Processor> = {
+        let mut processors = Vec::new();
+        for i in 0..CPU_NUM {
+            processors.push(Processor::new());
+        }
+        processors
+    };
+}
 
 pub struct Processor {
     inner: RefCell<ProcessorInner>,
@@ -59,20 +73,42 @@ impl Processor {
     }
 }
 
-lazy_static! {
-    pub static ref PROCESSOR: Processor = Processor::new();
+// lazy_static! {
+//     pub static ref PROCESSOR: Processor = Processor::new();
+// }
+
+pub fn hart_id() -> usize {
+    let hart_id: usize;
+    unsafe {
+        asm!("mv {}, tp", out(reg) hart_id);
+    }
+    hart_id
+}
+
+pub fn wait_for_interrupt() {
+    unsafe {
+        asm!("wfi");
+    }
 }
 
 pub fn run_tasks() {
-    PROCESSOR.run();
+    println_hart!("run_tasks", hart_id());
+    PROCESSORS[hart_id()].run();
 }
 
 pub fn take_current_task() -> Option<Arc<TaskControlBlock>> {
-    PROCESSOR.take_current()
+    PROCESSORS[hart_id()].take_current()
 }
 
 pub fn current_task() -> Option<Arc<TaskControlBlock>> {
-    PROCESSOR.current()
+    PROCESSORS[hart_id()].current()
+}
+
+pub fn current_tasks() -> Vec<Option<Arc<TaskControlBlock>>> {
+    PROCESSORS
+        .iter()
+        .map(|processor| processor.current())
+        .collect()
 }
 
 pub fn current_user_token() -> usize {
@@ -86,7 +122,7 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 }
 
 pub fn schedule(switched_task_cx_ptr2: *const usize) {
-    let idle_task_cx_ptr2 = PROCESSOR.get_idle_task_cx_ptr2();
+    let idle_task_cx_ptr2 = PROCESSORS[hart_id()].get_idle_task_cx_ptr2();
     unsafe {
         __switch(switched_task_cx_ptr2, idle_task_cx_ptr2);
     }
