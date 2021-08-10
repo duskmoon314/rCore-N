@@ -11,7 +11,7 @@ use uart8250::MmioUart8250;
 #[cfg(feature = "board_qemu")]
 lazy_static! {
     pub static ref UART: Arc<Mutex<MmioUart8250<'static>>> =
-        Arc::new(Mutex::new(MmioUart8250::new(0x1000_0000)));
+        Arc::new(Mutex::new(MmioUart8250::new(0x1000_0200)));
 }
 
 #[cfg(feature = "board_lrv")]

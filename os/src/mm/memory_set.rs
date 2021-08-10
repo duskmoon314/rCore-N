@@ -159,7 +159,7 @@ impl MemorySet {
         memory_set.push(
             MapArea::new(
                 (0x1000_0000 as usize).into(),
-                (0x1000_0200 as usize).into(),
+                (0x1000_0300 as usize).into(),
                 MapType::Mmio,
                 MapPermission::R | MapPermission::W,
             ),

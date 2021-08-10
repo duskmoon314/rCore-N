@@ -151,33 +151,32 @@ pub fn trap_return() -> ! {
 
 #[no_mangle]
 pub extern "C" fn trap_from_kernel() {
-    unsafe {
-        ebreak();
-    }
     let scause = scause::read();
     let stval = stval::read();
-    let _sepc = sepc::read();
-    let _sstatus = sstatus::read();
+    let sepc = sepc::read();
+    let sstatus = sstatus::read();
     match scause.cause() {
-        Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            set_next_trigger();
-            // unsafe {
-            //     ebreak();
-            // }
-            suspend_current_and_run_next();
-        }
-        Trap::Interrupt(Interrupt::SupervisorExternal) => {
-            // debug!("Supervisor External");
-            unsafe {
-                ebreak();
-            }
-            plic::handle_external_interrupt();
-        }
+        // Trap::Interrupt(Interrupt::SupervisorTimer) => {
+        //     set_next_trigger();
+        //     // unsafe {
+        //     //     ebreak();
+        //     // }
+        //     suspend_current_and_run_next();
+        // }
+        // Trap::Interrupt(Interrupt::SupervisorExternal) => {
+        //     // debug!("Supervisor External");
+        //     unsafe {
+        //         ebreak();
+        //     }
+        //     plic::handle_external_interrupt();
+        // }
         _ => {
             error!(
-                "Unsupported trap {:?}, stval = {:#x}!",
+                "Unsupported trap {:?}, stval = {:#x}, sepc = {:#x}, sstatus = {:#x?}!",
                 scause.cause(),
-                stval
+                stval,
+                sepc,
+                sstatus
             );
             panic!("a trap {:?} from kernel!", scause::read().cause());
         }

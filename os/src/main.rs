@@ -18,6 +18,7 @@ extern crate log;
 #[macro_use]
 mod console;
 mod config;
+#[macro_use]
 mod console_blog;
 mod fs;
 mod lang_items;
@@ -63,19 +64,18 @@ pub fn rust_main() -> ! {
         asm!("csrwi 0x800, 1");
     }
 
+    logger::init();
+    debug!("[kernel] Hello, world!");
     mm::init();
+    mm::remap_test();
     trap::init();
     plic::init();
     uart::init();
-    logger::init();
-    debug!("[kernel] Hello, world!");
-    mm::remap_test();
     task::add_initproc();
     println!("initproc added to task manager!");
     timer::set_next_trigger();
     loader::list_apps();
 
-    println_uart!("uart print test");
     task::run_tasks();
     panic!("Unreachable in rust_main!");
 }
