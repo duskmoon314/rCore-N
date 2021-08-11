@@ -35,7 +35,7 @@ pub fn push_stdout(c: u8) {
 #[allow(dead_code)]
 pub fn push_stdout(c: u8) {
     let uart = uart::UART.lock();
-    if uart.is_tx_fifo_empty() {
+    if uart.is_tx_fifo_empty() && OUT_BUFFER.lock().is_empty() {
         uart.write_byte(c);
     } else {
         let mut out_buffer = OUT_BUFFER.lock();

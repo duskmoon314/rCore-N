@@ -30,6 +30,7 @@ pub fn handle_external_interrupt() {
             if let Ok(_) = push_trap_record(
                 *pid,
                 UserTrapRecord {
+                    // User External Interrupt
                     cause: 8,
                     message: irq as usize,
                 },
@@ -45,7 +46,7 @@ pub fn handle_external_interrupt() {
                     debug!("[PLIC] irq {:?} handled by kenel, UART2", irq);
                 }
                 #[cfg(feature = "board_lrv")]
-                3 => {
+                4 => {
                     uart::handle_interrupt();
                     debug!("[PLIC] kenel handling uart");
                 }

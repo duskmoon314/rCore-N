@@ -221,7 +221,7 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
                     Err(_) => -3,
                 },
                 #[cfg(feature = "board_lrv")]
-                4 => match inner.memory_set.mmio_map(0x6000_2000, 0x6000_2FFF, 0x3) {
+                5 => match inner.memory_set.mmio_map(0x6000_2000, 0x6000_2FFF, 0x3) {
                     Ok(_) => 0x6000_2000,
                     Err(_) => -3,
                 },

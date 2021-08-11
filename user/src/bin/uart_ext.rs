@@ -144,10 +144,14 @@ pub mod uart {
 
 #[cfg(feature = "board_lrv")]
 mod uart {
+    use crate::user_console::{IN_BUFFER, OUT_BUFFER};
+    use alloc::sync::Arc;
+    use lazy_static::*;
+    use spin::Mutex;
     use uart_xilinx::MmioUartAxiLite;
 
     pub const UART_BASE_ADDRESS: usize = 0x6000_2000;
-    pub const UART_IRQN: u16 = 4;
+    pub const UART_IRQN: u16 = 5;
 
     lazy_static! {
         pub static ref UART: Arc<Mutex<MmioUartAxiLite<'static>>> =
@@ -165,7 +169,7 @@ mod uart {
         let status = uart.status();
         if status.contains(Status::TX_FIFO_EMPTY) {
             let mut stdout = OUT_BUFFER.lock();
-            for _ in 0..FIFO_DEPTH {
+            while !uart.is_tx_fifo_full() {
                 if let Some(ch) = stdout.pop_front() {
                     uart.write_byte(ch);
                 } else {
@@ -223,8 +227,8 @@ mod user_console {
     #[cfg(feature = "board_lrv")]
     #[allow(dead_code)]
     pub fn push_stdout(c: u8) {
-        let uart = uart::UART.lock();
-        if uart.is_tx_fifo_empty() {
+        let uart = UART.lock();
+        if uart.is_tx_fifo_empty() && OUT_BUFFER.lock().is_empty() {
             uart.write_byte(c);
         } else {
             let mut out_buffer = OUT_BUFFER.lock();
@@ -315,7 +319,7 @@ mod user_trap {
                             let pid = cause >> 4;
                             let msg = trap_record.message;
                             if msg == 15 {
-                                user_println!("[uart ext] Received SIGTERM, exiting...");
+                                println!("[uart ext] Received SIGTERM, exiting...");
                                 user_lib::exit(15);
                             } else {
                                 user_println!(

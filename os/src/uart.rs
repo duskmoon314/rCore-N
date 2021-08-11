@@ -98,7 +98,7 @@ pub fn handle_interrupt() {
     let status = uart.status();
     if status.contains(Status::TX_FIFO_EMPTY) {
         let mut stdout = OUT_BUFFER.lock();
-        for _ in 0..FIFO_DEPTH {
+        while !uart.is_tx_fifo_full() {
             if let Some(ch) = stdout.pop_front() {
                 uart.write_byte(ch);
             } else {
