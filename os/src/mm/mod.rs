@@ -20,3 +20,7 @@ pub fn init() {
     frame_allocator::init_frame_allocator();
     KERNEL_SPACE.lock().activate();
 }
+
+pub fn init_kernel_space() {
+    KERNEL_SPACE.lock().activate();
+}

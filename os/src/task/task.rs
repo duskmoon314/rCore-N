@@ -11,8 +11,10 @@ use crate::{
 use alloc::sync::{Arc, Weak};
 use alloc::vec;
 use alloc::vec::Vec;
+use core::fmt::{self, Debug, Formatter};
 use spin::{Mutex, MutexGuard};
 
+#[derive(Debug)]
 pub struct TaskControlBlock {
     // immutable
     pub pid: PidHandle,
@@ -34,6 +36,15 @@ pub struct TaskControlBlockInner {
     pub exit_code: i32,
     pub fd_table: Vec<Option<Arc<dyn File + Send + Sync>>>,
     pub mail_box: Arc<MailBox>,
+}
+
+impl Debug for TaskControlBlockInner {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!(
+            "TCBInner: {{\r\n  trap cx addr: {:?} , base_size: {:#x} \r\n  task_cx_ptr: {:#x} , token: {:#x} \r\n}}",
+            PhysAddr::from(self.trap_cx_ppn), self.base_size, self.task_cx_ptr, self.memory_set.token()
+        ))
+    }
 }
 
 impl TaskControlBlockInner {
@@ -149,6 +160,7 @@ impl TaskControlBlock {
         let kernel_stack_top = kernel_stack.get_top();
         // push a task context which goes to trap_return to the top of kernel stack
         let task_cx_ptr = kernel_stack.push_on_top(TaskContext::goto_trap_return());
+        debug!("new task cx ptr: {:#x?}", task_cx_ptr as usize);
         let task_control_block = Self {
             pid: pid_handle,
             kernel_stack,
@@ -212,6 +224,7 @@ impl TaskControlBlock {
         );
         // **** release current PCB lock
     }
+
     pub fn fork(self: &Arc<TaskControlBlock>) -> Arc<TaskControlBlock> {
         // ---- hold parent PCB lock
         let mut parent_inner = self.acquire_inner_lock();
@@ -227,6 +240,7 @@ impl TaskControlBlock {
         let kernel_stack_top = kernel_stack.get_top();
         // push a goto_trap_return task_cx on the top of kernel stack
         let task_cx_ptr = kernel_stack.push_on_top(TaskContext::goto_trap_return());
+        debug!("forked task cx ptr: {:#x?}", task_cx_ptr as usize);
         // copy fd table
         let mut new_fd_table: Vec<Option<Arc<dyn File + Send + Sync>>> = Vec::new();
         for fd in parent_inner.fd_table.iter() {
@@ -297,6 +311,7 @@ impl TaskControlBlock {
             let kernel_stack = KernelStack::new(&pid_handle);
             let kernel_stack_top = kernel_stack.get_top();
             let task_cx_ptr = kernel_stack.push_on_top(TaskContext::goto_trap_return());
+            debug!("spawned task cx ptr: {:#x?}", task_cx_ptr as usize);
 
             let task_control_block = Arc::new(TaskControlBlock {
                 pid: pid_handle,
@@ -340,6 +355,26 @@ impl TaskControlBlock {
 
     pub fn create_socket(&self) -> Arc<Socket> {
         self.inner.lock().mail_box.create_socket()
+    }
+}
+
+impl PartialEq for TaskControlBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.pid == other.pid
+    }
+}
+
+impl Eq for TaskControlBlock {}
+
+impl PartialOrd for TaskControlBlock {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TaskControlBlock {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.pid.cmp(&other.pid)
     }
 }
 

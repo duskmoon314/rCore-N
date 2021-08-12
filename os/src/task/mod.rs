@@ -1,22 +1,23 @@
 mod context;
 mod manager;
 mod pid;
+mod pool;
 mod processor;
 mod switch;
 mod task;
 
-use crate::loader::get_app_data_by_name;
+use crate::{loader::get_app_data_by_name, task::task::TaskControlBlockInner};
 use alloc::sync::Arc;
 use lazy_static::*;
-use manager::fetch_task;
+
 use switch::__switch;
 use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
-pub use manager::{add_task, find_task};
 pub use pid::{pid_alloc, KernelStack, PidHandle};
+pub use pool::{add_task, fetch_task, find_task};
 pub use processor::{
-    current_task, current_trap_cx, current_user_token, mmap, munmap, run_tasks, schedule,
+    current_task, current_trap_cx, current_user_token, hart_id, mmap, munmap, run_tasks, schedule,
     set_current_priority, take_current_task,
 };
 
@@ -29,6 +30,43 @@ pub fn suspend_current_and_run_next() {
     let task_cx_ptr2 = task_inner.get_task_cx_ptr2();
     // Change status to Ready
     task_inner.task_status = TaskStatus::Ready;
+    unsafe {
+        use crate::mm::PhysAddr;
+        let ra: usize = (*(task_inner.task_cx_ptr as *const TaskContext)).ra;
+        if ra > (8usize << 60)
+            || ra == 0x80570230
+            || ra == 0x80371230
+            || ra == 0x80373230
+            || ra == 0x80572230
+        {
+            let mut sp: usize;
+            asm!("mv {}, sp", out(reg) sp);
+            let mut token: usize;
+            asm!("csrr {}, satp", out(reg) token);
+            warn!(
+                "wrong ra before scheduler: {:#x}, pid: {}, sp: {:#x}, task_cx addr: {:#x}, trap_cx addr: {:?}",
+                ra, task.pid.0, sp, task_inner.task_cx_ptr, PhysAddr::from( task_inner.trap_cx_ppn)
+            );
+            debug!(
+                "current satp: {:#x}, task satp: {:#x}",
+                token,
+                task_inner.memory_set.token()
+            );
+            debug!("*ra: {:#x}", *(ra as *const usize));
+            debug!("*ra as {:#x?}", *(ra as *const TaskControlBlockInner));
+            trace!(
+                "task_cx: {:#x?}",
+                *(task_inner.task_cx_ptr as *const TaskContext)
+            );
+            trace!("trap_cx: {:#x?}", task_inner.get_trap_cx());
+            // asm!("ebreak");
+        } else {
+            // debug!(
+            //     "normal ra before scheduler: {:#x}, task_cx_ptr: {:#x}",
+            //     ra, task_inner.task_cx_ptr
+            // );
+        }
+    }
     if let Some(trap_info) = &task_inner.user_trap_info {
         trap_info.disable_user_ext_int();
     }
@@ -105,5 +143,6 @@ lazy_static! {
 }
 
 pub fn add_initproc() {
+    debug!("add_initproc");
     add_task(INITPROC.clone());
 }

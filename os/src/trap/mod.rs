@@ -6,7 +6,7 @@ use crate::plic;
 use crate::sbi::set_timer;
 use crate::syscall::syscall;
 use crate::task::{
-    current_task, current_trap_cx, current_user_token, exit_current_and_run_next,
+    current_task, current_trap_cx, current_user_token, exit_current_and_run_next, hart_id,
     suspend_current_and_run_next,
 };
 use crate::timer::{set_next_trigger, TIMER_MAP};
@@ -49,6 +49,7 @@ fn set_user_trap_entry() {
 #[no_mangle]
 pub fn trap_handler() -> ! {
     set_kernel_trap_entry();
+    // debug!("trap from user");
     let scause = scause::read();
     let stval = stval::read();
     match scause.cause() {
@@ -56,11 +57,14 @@ pub fn trap_handler() -> ! {
             // jump to next instruction anyway
             let mut cx = current_trap_cx();
             cx.sepc += 4;
+            let id = cx.x[17];
             // get system call return value
             let result = syscall(cx.x[17], [cx.x[10], cx.x[11], cx.x[12]]);
             // cx is changed during sys_exec, so we have to call it again
-            cx = current_trap_cx();
-            cx.x[10] = result as usize;
+            // cx = current_trap_cx();
+            if id != 221 {
+                cx.x[10] = result as usize;
+            }
         }
         Trap::Exception(Exception::StoreFault)
         | Trap::Exception(Exception::StorePageFault)
@@ -96,6 +100,7 @@ pub fn trap_handler() -> ! {
                 drop(timer_map);
                 if pid == 0 {
                     set_next_trigger();
+                    trace!("kernel tick");
                     suspend_current_and_run_next();
                 } else if pid == current_task().unwrap().pid.0 {
                     unsafe {
@@ -115,7 +120,7 @@ pub fn trap_handler() -> ! {
         }
         Trap::Interrupt(Interrupt::SupervisorExternal) => {
             // debug!("Supervisor External");
-            plic::handle_external_interrupt();
+            plic::handle_external_interrupt(hart_id());
         }
         _ => {
             error!(
@@ -130,6 +135,9 @@ pub fn trap_handler() -> ! {
 
 #[no_mangle]
 pub fn trap_return() -> ! {
+    unsafe {
+        sstatus::clear_sie();
+    }
     current_task()
         .unwrap()
         .acquire_inner_lock()
@@ -142,7 +150,10 @@ pub fn trap_return() -> ! {
         fn __restore();
     }
     let restore_va = __restore as usize - __alltraps as usize + TRAMPOLINE;
+    trace!("return to user");
     unsafe {
+        sstatus::set_spie();
+        sstatus::set_spp(sstatus::SPP::User);
         llvm_asm!("fence.i" :::: "volatile");
         llvm_asm!("jr $0" :: "r"(restore_va), "{a0}"(trap_cx_ptr), "{a1}"(user_satp) :: "volatile");
     }
@@ -170,13 +181,16 @@ pub extern "C" fn trap_from_kernel() {
         //     }
         //     plic::handle_external_interrupt();
         // }
+        Trap::Interrupt(Interrupt::SupervisorSoft) => {
+            debug!("SupervisorSoft");
+        }
         _ => {
             error!(
                 "Unsupported trap {:?}, stval = {:#x}, sepc = {:#x}, sstatus = {:#x?}!",
                 scause.cause(),
                 stval,
                 sepc,
-                sstatus
+                sstatus,
             );
             panic!("a trap {:?} from kernel!", scause::read().cause());
         }

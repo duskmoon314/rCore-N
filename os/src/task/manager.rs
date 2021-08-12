@@ -3,8 +3,6 @@ use core::borrow::Borrow;
 use super::{current_task, TaskControlBlock};
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
-use lazy_static::*;
-use spin::Mutex;
 
 pub struct TaskManager {
     ready_queue: VecDeque<Arc<TaskControlBlock>>,
@@ -20,7 +18,16 @@ impl TaskManager {
     pub fn add(&mut self, task: Arc<TaskControlBlock>) {
         self.ready_queue.push_back(task);
     }
+    pub fn remove(&mut self, task: &Arc<TaskControlBlock>) {
+        for (idx, task_item) in self.ready_queue.iter().enumerate() {
+            if *task_item == *task {
+                self.ready_queue.remove(idx);
+                break;
+            }
+        }
+    }
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
+        // May need to concern affinity
         self.ready_queue.pop_front()
     }
 
@@ -34,22 +41,22 @@ impl TaskManager {
     }
 }
 
-lazy_static! {
-    pub static ref TASK_MANAGER: Mutex<TaskManager> = Mutex::new(TaskManager::new());
-}
+// lazy_static! {
+//     pub static ref TASK_MANAGER: Mutex<TaskManager> = Mutex::new(TaskManager::new());
+// }
 
-pub fn add_task(task: Arc<TaskControlBlock>) {
-    TASK_MANAGER.lock().add(task);
-}
+// pub fn add_task(task: Arc<TaskControlBlock>) {
+//     TASK_MANAGER.lock().add(task);
+// }
 
-pub fn fetch_task() -> Option<Arc<TaskControlBlock>> {
-    TASK_MANAGER.lock().fetch()
-}
+// pub fn fetch_task() -> Option<Arc<TaskControlBlock>> {
+//     TASK_MANAGER.lock().fetch()
+// }
 
-pub fn find_task(pid: usize) -> Option<Arc<TaskControlBlock>> {
-    let current = current_task().unwrap();
-    if current.pid == pid {
-        return Some(current);
-    }
-    TASK_MANAGER.lock().find(pid)
-}
+// pub fn find_task(pid: usize) -> Option<Arc<TaskControlBlock>> {
+//     let current = current_task().unwrap();
+//     if current.pid == pid {
+//         return Some(current);
+//     }
+//     TASK_MANAGER.lock().find(pid)
+// }

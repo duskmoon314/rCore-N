@@ -1,5 +1,4 @@
-use rv_plic::Priority;
-use rv_plic::PLIC;
+use rv_plic::{Priority, PLIC};
 
 use crate::trap::{push_trap_record, UserTrapRecord, USER_EXT_INT_MAP};
 use crate::uart;
@@ -11,9 +10,9 @@ pub const PLIC_PRIORITY_BIT: usize = 3;
 
 pub type Plic = PLIC<PLIC_BASE, PLIC_PRIORITY_BIT>;
 
-pub fn get_context(hartid: usize, mode: char) -> usize {
+pub fn get_context(hart_id: usize, mode: char) -> usize {
     const MODE_PER_HART: usize = 3;
-    hartid * MODE_PER_HART
+    hart_id * MODE_PER_HART
         + match mode {
             'M' => 0,
             'S' => 1,
@@ -22,11 +21,37 @@ pub fn get_context(hartid: usize, mode: char) -> usize {
         }
 }
 
-pub fn handle_external_interrupt() {
-    if let Some(irq) = Plic::claim(get_context(0, 'S')) {
+#[cfg(feature = "board_qemu")]
+pub fn init() {
+    Plic::set_priority(9, Priority::lowest());
+    Plic::set_priority(12, Priority::lowest());
+}
+
+#[cfg(feature = "board_lrv")]
+pub fn init() {
+    Plic::set_priority(4, Priority::lowest());
+    Plic::set_priority(5, Priority::lowest());
+}
+
+#[cfg(feature = "board_qemu")]
+pub fn init_hart(hart_id: usize) {
+    let context = get_context(hart_id, 'S');
+    Plic::enable(context, 12);
+    Plic::set_threshold(context, Priority::any());
+}
+
+#[cfg(feature = "board_lrv")]
+pub fn init_hart(hart_id: usize) {
+    let context = get_context(hart_id, 'S');
+    Plic::enable(context, 4);
+    Plic::set_threshold(context, Priority::any());
+}
+
+pub fn handle_external_interrupt(hart_id: usize) {
+    if let Some(irq) = Plic::claim(get_context(hart_id, 'S')) {
         let mut can_user_handle = false;
         if let Some(pid) = USER_EXT_INT_MAP.lock().get(&irq) {
-            debug!("[PLIC] irq {:?} mapped to pid {:?}",irq, pid);
+            trace!("[PLIC] irq {:?} mapped to pid {:?}", irq, pid);
             if let Ok(_) = push_trap_record(
                 *pid,
                 UserTrapRecord {
@@ -43,7 +68,7 @@ pub fn handle_external_interrupt() {
                 #[cfg(feature = "board_qemu")]
                 12 => {
                     uart::handle_interrupt();
-                    debug!("[PLIC] irq {:?} handled by kenel, UART2", irq);
+                    trace!("[PLIC] irq {:?} handled by kenel, UART2", irq);
                 }
                 #[cfg(feature = "board_lrv")]
                 4 => {
@@ -56,23 +81,5 @@ pub fn handle_external_interrupt() {
             }
         }
         Plic::complete(get_context(0, 'S'), irq)
-    }
-}
-
-pub fn init() {
-    Plic::set_threshold(1, Priority::any());
-    Plic::set_threshold(2, Priority::any());
-    #[cfg(feature = "board_qemu")]
-    {
-        Plic::enable(1, 12);
-        Plic::set_priority(9, Priority::lowest());
-        Plic::set_priority(10, Priority::lowest());
-        Plic::set_priority(12, Priority::lowest());
-    }
-    #[cfg(feature = "board_lrv")]
-    {
-        Plic::enable(1, 3);
-        Plic::set_priority(3, Priority::lowest());
-        Plic::set_priority(4, Priority::lowest());
     }
 }

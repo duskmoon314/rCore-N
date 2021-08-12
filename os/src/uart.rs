@@ -1,12 +1,10 @@
 use crate::console_blog::{IN_BUFFER, OUT_BUFFER};
-use core::fmt::{self, Write};
-
 use alloc::sync::Arc;
 use lazy_static::*;
 use spin::Mutex;
 
 #[cfg(feature = "board_qemu")]
-use uart8250::MmioUart8250;
+use uart8250::{InterruptType, MmioUart8250};
 
 #[cfg(feature = "board_qemu")]
 lazy_static! {
@@ -36,47 +34,25 @@ pub fn init() {
     UART.lock().enable_interrupt();
 }
 
-#[allow(dead_code)]
-pub fn print_uart(args: fmt::Arguments) {
-    UART.lock().write_fmt(args).unwrap();
-}
-
-#[macro_export]
-macro_rules! print_uart {
-    ($fmt: literal $(, $($arg: tt)+)?) => {
-        $crate::uart::print_uart(format_args!($fmt $(, $($arg)+)?));
-    };
-}
-
-#[macro_export]
-macro_rules! println_uart {
-    ($fmt: literal $(, $($arg: tt)+)?) => {
-        $crate::uart::print_uart(format_args!(concat!($fmt, "\r\n") $(, $($arg)+)?));
-    }
-}
-
 #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 const FIFO_DEPTH: usize = 16;
 
 #[cfg(feature = "board_qemu")]
 pub fn handle_interrupt() {
     let uart = UART.lock();
-    let int_id = uart.read_iir();
+    let int_type = uart.read_interrupt_type();
     // No interrupt is pending
-    if int_id & 0b1 == 1 {
-        return;
-    }
-    let int_id = (int_id >> 1) & 0b111;
-    match int_id {
-        // Received Data Available
-        0b010 => {
+    // if int_id & 0b1 == 1 {
+    //     return;
+    // }
+    match int_type {
+        InterruptType::ReceivedDataAvailable => {
             let mut stdin = IN_BUFFER.lock();
             while let Some(ch) = uart.read_byte() {
                 stdin.push_back(ch);
             }
         }
-        // Transmitter Holding Register Empty
-        0b001 => {
+        InterruptType::TransmitterHoldingRegisterEmpty => {
             let mut stdout = OUT_BUFFER.lock();
             for _ in 0..FIFO_DEPTH {
                 if let Some(ch) = stdout.pop_front() {

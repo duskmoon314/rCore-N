@@ -39,6 +39,7 @@ lazy_static! {
     static ref PID_ALLOCATOR: Mutex<PidAllocator> = Mutex::new(PidAllocator::new());
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct PidHandle(pub usize);
 
 impl Drop for PidHandle {
@@ -65,6 +66,7 @@ pub fn kernel_stack_position(app_id: usize) -> (usize, usize) {
     (bottom, top)
 }
 
+#[derive(Debug)]
 pub struct KernelStack {
     pid: usize,
 }

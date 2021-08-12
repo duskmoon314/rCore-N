@@ -2,15 +2,16 @@ use crate::trap::trap_return;
 use riscv::register::{uie, uip};
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct TaskContext {
-    ra: usize,
-    s: [usize; 12],
-    uie: uie::Uie,
-    uip: uip::Uip,
-    uepc: usize,
-    utvec: usize,
-    utval: usize,
-    ucause: usize,
+    pub ra: usize,
+    pub s: [usize; 12],
+    pub uie: uie::Uie,
+    pub uip: uip::Uip,
+    pub uepc: usize,
+    pub utvec: usize,
+    pub utval: usize,
+    pub ucause: usize,
 }
 
 impl TaskContext {

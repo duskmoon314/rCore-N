@@ -13,6 +13,7 @@ __switch:
     #     next_task_cx_ptr2: &*const TaskContext
     # )
     # push TaskContext to current sp and save its address to where a0 points to
+    fence.i
     addi sp, sp, -19*8
     sd sp, 0(a0)
     # fill TaskContext with ra & s0-s11
@@ -58,5 +59,6 @@ __switch:
     .endr
     # pop TaskContext
     addi sp, sp, 19*8
+    fence.i
     ret
 

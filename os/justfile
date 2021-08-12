@@ -1,6 +1,6 @@
 QEMU := "../../qemu-build/riscv64-softmmu/qemu-system-riscv64"
 # machine, user, supervisor
-SERIAL_FLAGS := "-serial /dev/pts/2 -serial /dev/pts/10 -serial /dev/pts/5"
+SERIAL_FLAGS := "-serial /dev/pts/19 -serial /dev/pts/16 -serial /dev/pts/15"
 
 TARGET := "riscv64imac-unknown-none-elf"
 MODE := "debug"
@@ -30,19 +30,19 @@ build_lrv: user
     rm src/linker.ld
 
 disasm: build
-    {{OBJDUMP}} -D -S {{KERNEL_ELF}} > {{KERNEL_ASM}}
+    {{OBJDUMP}} -S {{KERNEL_ELF}} > {{KERNEL_ASM}}
 
 disasm_lrv: build_lrv
     {{OBJDUMP}} -D -S {{KERNEL_ELF}} > {{KERNEL_ASM}}
 
 run: build
-    {{QEMU}} -machine virt {{SERIAL_FLAGS}} -nographic -bios ./rustsbi-qemu.bin -device loader,file={{KERNEL_BIN}},addr=0x80200000
+    {{QEMU}} -machine virt -smp 4 {{SERIAL_FLAGS}} -nographic -bios ./rustsbi-qemu.bin -device loader,file={{KERNEL_BIN}},addr=0x80200000
 
 debug_qemu: build
-    {{QEMU}} -machine virt {{SERIAL_FLAGS}} -nographic -bios ./rustsbi-qemu.bin -device loader,file={{KERNEL_BIN}},addr=0x80200000 -d int -D debug.log
+    {{QEMU}} -machine virt -smp 4 {{SERIAL_FLAGS}} -nographic -bios ./rustsbi-qemu.bin -device loader,file={{KERNEL_BIN}},addr=0x80200000 -d int -D debug.log
 
 debug: build disasm
-    tmux new-session -d "{{QEMU}} -machine virt {{SERIAL_FLAGS}} -nographic -bios ./rustsbi-qemu.bin -device loader,file={{KERNEL_BIN}},addr=0x80200000 -s -S" && tmux split-window -h "riscv64-unknown-elf-gdb -ex 'file {{KERNEL_ELF}}' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'" && tmux -2 attach-session -d
+    tmux new-session -d "{{QEMU}} -machine virt -smp 4 {{SERIAL_FLAGS}} -nographic -bios ./rustsbi-qemu.bin -device loader,file={{KERNEL_BIN}},addr=0x80200000 -s -S" && tmux split-window -h "riscv64-unknown-elf-gdb -ex 'file {{KERNEL_ELF}}' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'" && tmux -2 attach-session -d
 
 debug_all: build disasm
-    tmux new-session -d "{{QEMU}} -machine virt {{SERIAL_FLAGS}} -nographic -bios ./rustsbi-qemu.bin -device loader,file={{KERNEL_BIN}},addr=0x80200000 -d int -D debug.log -s -S" && tmux split-window -h "riscv64-unknown-elf-gdb -ex 'file {{KERNEL_ELF}}' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'" && tmux -2 attach-session -d
+    tmux new-session -d "{{QEMU}} -machine virt -smp 4 {{SERIAL_FLAGS}} -nographic -bios ./rustsbi-qemu.bin -device loader,file={{KERNEL_BIN}},addr=0x80200000 -d int -D debug.log -s -S" && tmux split-window -h "riscv64-unknown-elf-gdb -ex 'file {{KERNEL_ELF}}' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'" && tmux -2 attach-session -d

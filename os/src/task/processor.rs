@@ -1,10 +1,24 @@
 use super::TaskControlBlock;
 use super::__switch;
-use super::{fetch_task, TaskStatus};
+use super::{fetch_task, TaskContext, TaskStatus};
+use crate::task::task::TaskControlBlockInner;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::cell::RefCell;
 use lazy_static::*;
+
+const CPU_NUM: usize = 4;
+
+lazy_static! {
+    pub static ref PROCESSORS: Vec<Processor> = {
+        let mut processors = Vec::new();
+        for _ in 0..CPU_NUM {
+            processors.push(Processor::new());
+        }
+        processors
+    };
+}
 
 pub struct Processor {
     inner: RefCell<ProcessorInner>,
@@ -38,6 +52,42 @@ impl Processor {
                 let mut task_inner = task.acquire_inner_lock();
                 let next_task_cx_ptr2 = task_inner.get_task_cx_ptr2();
                 task_inner.task_status = TaskStatus::Running;
+                unsafe {
+                    use crate::mm::PhysAddr;
+                    // let mut ra: usize;
+                    let ra: usize = (*(task_inner.task_cx_ptr as *const TaskContext)).ra;
+                    // asm!("ld {}, 0({})", out(reg)ra, in(reg)task_inner.task_cx_ptr);
+                    if ra > (8usize << 60)
+                        || ra == 0x80570230
+                        || ra == 0x80371230
+                        || ra == 0x80373230
+                        || ra == 0x80572230
+                    {
+                        let mut sp: usize;
+                        asm!("mv {}, sp", out(reg) sp);
+                        let mut token: usize;
+                        asm!("csrr {}, satp", out(reg) token);
+                        // let idle_task_cx_ptr = *idle_task_cx_ptr2;
+                        warn!(
+                            "wrong ra in scheduler: {:#x}, pid: {}, sp: {:#x}, task_cx addr: {:#x}, trap_cx addr: {:?}",
+                            ra, task.pid.0, sp, task_inner.task_cx_ptr, PhysAddr::from(task_inner.trap_cx_ppn)
+                        );
+                        debug!(
+                            "current satp: {:#x}, task satp: {:#x}",
+                            token,
+                            task_inner.memory_set.token()
+                        );
+                        debug!("*ra: {:#x}", *(ra as *const usize));
+                        debug!("*ra as {:#x?}", *(ra as *const TaskControlBlockInner));
+                        // warn!("task_cx: {:#x?}", task_inner.get_trap_cx());
+                        // asm!("ebreak");
+                    } else {
+                        // debug!(
+                        //     "normal ra before scheduler: {:#x}, task_cx_ptr: {:#x}",
+                        //     ra, task_inner.task_cx_ptr
+                        // );
+                    }
+                }
                 drop(task_inner);
                 // release
                 self.inner.borrow_mut().current = Some(task);
@@ -59,20 +109,36 @@ impl Processor {
     }
 }
 
-lazy_static! {
-    pub static ref PROCESSOR: Processor = Processor::new();
+// lazy_static! {
+//     pub static ref PROCESSOR: Processor = Processor::new();
+// }
+
+pub fn hart_id() -> usize {
+    let hart_id: usize;
+    unsafe {
+        asm!("mv {}, tp", out(reg) hart_id);
+    }
+    hart_id
 }
 
 pub fn run_tasks() {
-    PROCESSOR.run();
+    debug!("run_tasks");
+    PROCESSORS[hart_id()].run();
 }
 
 pub fn take_current_task() -> Option<Arc<TaskControlBlock>> {
-    PROCESSOR.take_current()
+    PROCESSORS[hart_id()].take_current()
 }
 
 pub fn current_task() -> Option<Arc<TaskControlBlock>> {
-    PROCESSOR.current()
+    PROCESSORS[hart_id()].current()
+}
+
+pub fn current_tasks() -> Vec<Option<Arc<TaskControlBlock>>> {
+    PROCESSORS
+        .iter()
+        .map(|processor| processor.current())
+        .collect()
 }
 
 pub fn current_user_token() -> usize {
@@ -86,7 +152,7 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 }
 
 pub fn schedule(switched_task_cx_ptr2: *const usize) {
-    let idle_task_cx_ptr2 = PROCESSOR.get_idle_task_cx_ptr2();
+    let idle_task_cx_ptr2 = PROCESSORS[hart_id()].get_idle_task_cx_ptr2();
     unsafe {
         __switch(switched_task_cx_ptr2, idle_task_cx_ptr2);
     }

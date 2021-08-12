@@ -19,6 +19,7 @@ pub fn sys_exit(exit_code: i32) -> ! {
 }
 
 pub fn sys_yield() -> isize {
+    trace!("sys_yield");
     suspend_current_and_run_next();
     0
 }
@@ -68,7 +69,7 @@ pub fn sys_fork() -> isize {
     trap_cx.x[10] = 0;
     // add new task to scheduler
     add_task(new_task);
-    debug!("new_task {:?}", new_pid);
+    debug!("new_task {:?} via fork", new_pid);
     new_pid as isize
 }
 
@@ -89,6 +90,7 @@ pub fn sys_exec(path: *const u8) -> isize {
 /// If there is not a child process whose pid is same as given, return -1.
 /// Else if there is a child process but it is still running, return -2.
 pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
+    trace!("sys_waitpid {}", pid);
     let task = current_task().unwrap();
     // find a child process
 
