@@ -6,6 +6,7 @@
 #![feature(panic_info_message)]
 #![feature(alloc_error_handler)]
 #![feature(map_first_last)]
+#![feature(map_try_insert)]
 
 extern crate alloc;
 extern crate rv_plic;

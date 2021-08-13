@@ -42,10 +42,6 @@ impl TaskPool {
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
         self.scheduler.fetch()
     }
-
-    pub fn find(&self, pid: usize) -> Option<Arc<TaskControlBlock>> {
-        self.scheduler.find(pid)
-    }
 }
 
 pub fn add_task(task: Arc<TaskControlBlock>) {
@@ -56,14 +52,4 @@ pub fn add_task(task: Arc<TaskControlBlock>) {
 
 pub fn fetch_task() -> Option<Arc<TaskControlBlock>> {
     TASK_POOL.lock().fetch()
-}
-
-pub fn find_task(pid: usize) -> Option<Arc<TaskControlBlock>> {
-    for current in current_tasks() {
-        let current = current.unwrap();
-        if current.pid == pid {
-            return Some(current);
-        }
-    }
-    TASK_POOL.lock().find(pid)
 }

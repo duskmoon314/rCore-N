@@ -15,8 +15,8 @@ use switch::__switch;
 use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
-pub use pid::{pid_alloc, KernelStack, PidHandle};
-pub use pool::{add_task, fetch_task, find_task};
+pub use pid::{find_task, pid_alloc, KernelStack, PidHandle};
+pub use pool::{add_task, fetch_task};
 pub use processor::{
     current_task, current_trap_cx, current_user_token, hart_id, mmap, munmap, run_tasks, schedule,
     set_current_priority, take_current_task,
@@ -85,9 +85,8 @@ pub fn exit_current_and_run_next(exit_code: i32) {
 }
 
 lazy_static! {
-    pub static ref INITPROC: Arc<TaskControlBlock> = Arc::new(TaskControlBlock::new(
-        get_app_data_by_name("initproc").unwrap()
-    ));
+    pub static ref INITPROC: Arc<TaskControlBlock> =
+        TaskControlBlock::new(get_app_data_by_name("initproc").unwrap());
 }
 
 pub fn add_initproc() {

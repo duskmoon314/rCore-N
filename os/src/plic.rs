@@ -8,7 +8,7 @@ pub const PLIC_BASE: usize = 0xc00_0000;
 #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 pub const PLIC_PRIORITY_BIT: usize = 3;
 
-pub type Plic = PLIC<PLIC_BASE, PLIC_PRIORITY_BIT>;
+pub type Plic = PLIC<{ PLIC_BASE }, { PLIC_PRIORITY_BIT }>;
 
 pub fn get_context(hart_id: usize, mode: char) -> usize {
     const MODE_PER_HART: usize = 3;
@@ -52,14 +52,16 @@ pub fn handle_external_interrupt(hart_id: usize) {
         let mut can_user_handle = false;
         if let Some(pid) = USER_EXT_INT_MAP.lock().get(&irq) {
             trace!("[PLIC] irq {:?} mapped to pid {:?}", irq, pid);
-            if let Ok(_) = push_trap_record(
+            if push_trap_record(
                 *pid,
                 UserTrapRecord {
                     // User External Interrupt
                     cause: 8,
                     message: irq as usize,
                 },
-            ) {
+            )
+            .is_ok()
+            {
                 can_user_handle = true;
             }
         }

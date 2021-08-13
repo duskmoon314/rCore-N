@@ -14,7 +14,7 @@ log = "0.4"
 riscv = { git = "https://github.com/duskmoon314/riscv", branch = "extN", features = [
     "inline-asm",
 ] }
-spin = "0.7.0"
+spin = "0.9"
 xmas-elf = "0.7.0"
 rv-plic = { git = "https://github.com/duskmoon314/rv-plic" }
 uart8250 = { version = "*", features = ["fmt"], optional = true }

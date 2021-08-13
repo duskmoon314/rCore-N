@@ -30,15 +30,6 @@ impl TaskManager {
         // May need to concern affinity
         self.ready_queue.pop_front()
     }
-
-    pub fn find(&self, pid: usize) -> Option<Arc<TaskControlBlock>> {
-        for t in self.ready_queue.borrow() {
-            if t.pid == pid {
-                return Some(t.clone());
-            }
-        }
-        None
-    }
 }
 
 // lazy_static! {
