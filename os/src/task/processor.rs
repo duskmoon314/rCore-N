@@ -1,16 +1,13 @@
 use super::TaskControlBlock;
 use super::__switch;
 use super::add_task;
-use super::{fetch_task, TaskContext, TaskStatus};
-use crate::task::task::TaskControlBlockInner;
+use super::{fetch_task, TaskStatus};
+use crate::config::CPU_NUM;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 use lazy_static::*;
-
-const CPU_NUM: usize = 4;
-
 lazy_static! {
     pub static ref PROCESSORS: Vec<Processor> = {
         let mut processors = Vec::new();
@@ -104,20 +101,20 @@ impl Processor {
     }
 
     fn suspend_current(&self) {
-        let task = take_current_task().unwrap();
+        if let Some(task) = take_current_task() {
+            // ---- hold current PCB lock
+            let mut task_inner = task.acquire_inner_lock();
+            // Change status to Ready
+            task_inner.task_status = TaskStatus::Ready;
+            if let Some(trap_info) = &task_inner.user_trap_info {
+                trap_info.disable_user_ext_int();
+            }
+            drop(task_inner);
+            // ---- release current PCB lock
 
-        // ---- hold current PCB lock
-        let mut task_inner = task.acquire_inner_lock();
-        // Change status to Ready
-        task_inner.task_status = TaskStatus::Ready;
-        if let Some(trap_info) = &task_inner.user_trap_info {
-            trap_info.disable_user_ext_int();
+            // push back to ready queue.
+            add_task(task);
         }
-        drop(task_inner);
-        // ---- release current PCB lock
-
-        // push back to ready queue.
-        add_task(task);
     }
 
     pub fn run(&self) {

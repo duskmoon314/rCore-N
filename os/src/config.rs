@@ -20,3 +20,5 @@ pub const CLOCK_FREQ: usize = 12500000;
 
 #[cfg(feature = "board_lrv")]
 pub const CLOCK_FREQ: usize = 10_000_000;
+
+pub const CPU_NUM: usize = 1;

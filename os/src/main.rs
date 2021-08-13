@@ -15,7 +15,7 @@ extern crate bitflags;
 #[macro_use]
 extern crate log;
 
-use crate::{mm::init_kernel_space, sbi::send_ipi};
+use crate::{config::CPU_NUM, mm::init_kernel_space, sbi::send_ipi};
 
 #[macro_use]
 mod console;
@@ -82,7 +82,7 @@ pub fn rust_main(hart_id: usize) -> ! {
             println_hart!("satp: {:#x}, sp: {:#x}", hart_id, satp, sp);
         }
 
-        for i in 1..4 {
+        for i in 1..CPU_NUM {
             debug!("[kernel {}] Start {}", hart_id, i);
             let mask: usize = 1 << i;
             send_ipi(&mask as *const _ as usize);
