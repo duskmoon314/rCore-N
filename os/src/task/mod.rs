@@ -10,6 +10,7 @@ use crate::{loader::get_app_data_by_name, task::task::TaskControlBlockInner};
 use alloc::sync::Arc;
 use lazy_static::*;
 
+use spin::MutexGuard;
 use switch::__switch;
 use task::{TaskControlBlock, TaskStatus};
 
@@ -23,67 +24,14 @@ pub use processor::{
 
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
-    let task = take_current_task().unwrap();
-
-    // ---- hold current PCB lock
-    let mut task_inner = task.acquire_inner_lock();
-    let task_cx_ptr2 = task_inner.get_task_cx_ptr2();
-    // Change status to Ready
-    task_inner.task_status = TaskStatus::Ready;
-    unsafe {
-        use crate::mm::PhysAddr;
-        let ra: usize = (*(task_inner.task_cx_ptr as *const TaskContext)).ra;
-        if ra > (8usize << 60)
-            || ra == 0x80570230
-            || ra == 0x80371230
-            || ra == 0x80373230
-            || ra == 0x80572230
-        {
-            let mut sp: usize;
-            asm!("mv {}, sp", out(reg) sp);
-            let mut token: usize;
-            asm!("csrr {}, satp", out(reg) token);
-            warn!(
-                "wrong ra before scheduler: {:#x}, pid: {}, sp: {:#x}, task_cx addr: {:#x}, trap_cx addr: {:?}",
-                ra, task.pid.0, sp, task_inner.task_cx_ptr, PhysAddr::from( task_inner.trap_cx_ppn)
-            );
-            debug!(
-                "current satp: {:#x}, task satp: {:#x}",
-                token,
-                task_inner.memory_set.token()
-            );
-            debug!("*ra: {:#x}", *(ra as *const usize));
-            debug!("*ra as {:#x?}", *(ra as *const TaskControlBlockInner));
-            trace!(
-                "task_cx: {:#x?}",
-                *(task_inner.task_cx_ptr as *const TaskContext)
-            );
-            trace!("trap_cx: {:#x?}", task_inner.get_trap_cx());
-            // asm!("ebreak");
-        } else {
-            // debug!(
-            //     "normal ra before scheduler: {:#x}, task_cx_ptr: {:#x}",
-            //     ra, task_inner.task_cx_ptr
-            // );
-        }
-    }
-    if let Some(trap_info) = &task_inner.user_trap_info {
-        trap_info.disable_user_ext_int();
-    }
-    drop(task_inner);
-    // ---- release current PCB lock
-
-    // push back to ready queue.
-    add_task(task);
-    // jump to scheduling cycle
-    schedule(task_cx_ptr2);
 
     let task = current_task().unwrap();
-    // ---- hold current PCB lock
-    let inner = task.acquire_inner_lock();
-    if let Some(trap_info) = &inner.user_trap_info {
-        trap_info.enable_user_ext_int();
-    }
+    let task_inner = task.acquire_inner_lock();
+    let task_cx_ptr2 = task_inner.get_task_cx_ptr2();
+    drop(task_inner);
+
+    // jump to scheduling cycle
+    schedule(task_cx_ptr2);
 }
 
 pub fn exit_current_and_run_next(exit_code: i32) {
@@ -129,11 +77,11 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     let _unused: usize = 0;
     schedule(&_unused as *const _);
 
-    let task = current_task().unwrap();
-    let task_inner = task.acquire_inner_lock();
-    if let Some(trap_info) = &task_inner.user_trap_info {
-        trap_info.enable_user_ext_int();
-    }
+    // let task = current_task().unwrap();
+    // let task_inner = task.acquire_inner_lock();
+    // if let Some(trap_info) = &task_inner.user_trap_info {
+    //     trap_info.enable_user_ext_int();
+    // }
 }
 
 lazy_static! {
