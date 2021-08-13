@@ -1,6 +1,6 @@
 QEMU := "../../qemu-build/riscv64-softmmu/qemu-system-riscv64"
 # machine, user, supervisor
-SERIAL_FLAGS := "-serial /dev/pts/2 -serial /dev/pts/6 -serial /dev/pts/5"
+SERIAL_FLAGS := "-serial /dev/pts/1 -serial /dev/pts/2 -serial /dev/pts/3"
 
 TARGET := "riscv64imac-unknown-none-elf"
 MODE := "debug"
@@ -12,6 +12,10 @@ KERNEL_ELF := BUILD_PATH + "os"
 KERNEL_ASM := BUILD_PATH + "os.asm"
 KERNEL_BIN := BUILD_PATH + "os.bin"
 KERNEL_BIN_LRV := BUILD_PATH + "rcore-n.bin"
+
+clean:
+    cargo clean
+    cd ../user && make clean && cd -
 
 user:
     cd ../user && make build
