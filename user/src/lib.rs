@@ -187,3 +187,7 @@ pub fn set_timer(time_us: isize) -> isize {
 pub fn claim_ext_int(device_id: usize) -> isize {
     sys_claim_ext_int(device_id)
 }
+
+pub fn set_ext_int_enable(device_id: usize, enable: usize) -> isize {
+    sys_set_ext_int_enable(device_id, enable)
+}

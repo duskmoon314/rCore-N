@@ -19,6 +19,7 @@ const SYSCALL_INIT_USER_TRAP: usize = 600;
 const SYSCALL_SEND_MSG: usize = 601;
 const SYSCALL_SET_TIMER: usize = 602;
 const SYSCALL_CLAIM_EXT_INT: usize = 603;
+const SYSCALL_SET_EXT_INT_ENABLE: usize = 604;
 
 mod fs;
 mod process;
@@ -50,6 +51,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
         SYSCALL_SEND_MSG => sys_send_msg(args[0], args[1]),
         SYSCALL_SET_TIMER => sys_set_timer(args[0]),
         SYSCALL_CLAIM_EXT_INT => sys_claim_ext_int(args[0]),
+        SYSCALL_SET_EXT_INT_ENABLE => sys_set_ext_int_enable(args[0], args[1]),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }
 }

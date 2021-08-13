@@ -44,6 +44,7 @@ pub fn init_hart(hart_id: usize) {
 pub fn init_hart(hart_id: usize) {
     let context = get_context(hart_id, 'S');
     Plic::enable(context, 4);
+    Plic::disable(context, 5);
     Plic::set_threshold(context, Priority::any());
 }
 

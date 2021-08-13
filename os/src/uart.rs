@@ -6,6 +6,9 @@ use spin::Mutex;
 #[cfg(feature = "board_qemu")]
 use uart8250::{InterruptType, MmioUart8250};
 
+#[cfg(feature = "board_lrv")]
+use uart_xilinx::uart_16550::{InterruptType, MmioUartAxi16550};
+
 #[cfg(feature = "board_qemu")]
 lazy_static! {
     pub static ref UART: Arc<Mutex<MmioUart8250<'static>>> =
@@ -13,23 +16,29 @@ lazy_static! {
 }
 
 #[cfg(feature = "board_lrv")]
+lazy_static! {
+    pub static ref UART: Arc<Mutex<MmioUartAxi16550<'static>>> =
+        Arc::new(Mutex::new(MmioUartAxi16550::new(0x1000_0200)));
+}
+
+#[cfg(feature = "board_lrv_uartlite")]
 use uart_xilinx::MmioUartAxiLite;
 
-#[cfg(feature = "board_lrv")]
+#[cfg(feature = "board_lrv_uartlite")]
 lazy_static! {
     pub static ref UART: Arc<Mutex<MmioUartAxiLite<'static>>> =
         Arc::new(Mutex::new(MmioUartAxiLite::new(0x6000_1000)));
 }
 
-#[cfg(feature = "board_qemu")]
+#[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 pub fn init() {
     let uart = UART.lock();
-    uart.init(11_059_200, 115200);
+    uart.init(100_000_000, 115200);
     // Rx FIFO trigger level=14, reset Rx & Tx FIFO, enable FIFO
     uart.write_fcr(0b11_000_11_1);
 }
 
-#[cfg(feature = "board_lrv")]
+#[cfg(feature = "board_lrv_uartlite")]
 pub fn init() {
     UART.lock().enable_interrupt();
 }
@@ -37,7 +46,7 @@ pub fn init() {
 #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 const FIFO_DEPTH: usize = 16;
 
-#[cfg(feature = "board_qemu")]
+#[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 pub fn handle_interrupt() {
     let uart = UART.lock();
     let int_type = uart.read_interrupt_type();
@@ -67,7 +76,7 @@ pub fn handle_interrupt() {
     }
 }
 
-#[cfg(feature = "board_lrv")]
+#[cfg(feature = "board_lrv_uartlite")]
 pub fn handle_interrupt() {
     use uart_xilinx::uart_lite::Status;
     let uart = UART.lock();

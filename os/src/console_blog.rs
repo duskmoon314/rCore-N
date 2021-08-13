@@ -16,7 +16,7 @@ lazy_static! {
         Arc::new(Mutex::new(VecDeque::with_capacity(DEFAULT_OUT_BUFFER_SIZE)));
 }
 
-#[cfg(feature = "board_qemu")]
+#[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 #[allow(dead_code)]
 pub fn push_stdout(c: u8) {
     let uart = uart::UART.lock();
@@ -31,7 +31,7 @@ pub fn push_stdout(c: u8) {
     }
 }
 
-#[cfg(feature = "board_lrv")]
+#[cfg(feature = "board_lrv_uartlite")]
 #[allow(dead_code)]
 pub fn push_stdout(c: u8) {
     let uart = uart::UART.lock();

@@ -9,7 +9,7 @@ extern crate alloc;
 use alloc::string::String;
 use riscv::register::uie;
 use user_console::pop_stdin;
-use user_lib::{claim_ext_int, init_user_trap, yield_};
+use user_lib::{claim_ext_int, init_user_trap, set_ext_int_enable, yield_};
 
 const LF: u8 = 0x0au8;
 const CR: u8 = 0x0du8;
@@ -28,6 +28,7 @@ pub fn main() -> i32 {
     uart::init();
     user_println!("Hello from user UART!");
     let mut line = String::new();
+    set_ext_int_enable(uart::UART_IRQN as usize, 1);
     loop {
         unsafe {
             uie::clear_uext();
@@ -85,24 +86,41 @@ macro_rules! user_println {
     }
 }
 
-#[cfg(feature = "board_qemu")]
+#[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 pub mod uart {
     use crate::user_console::{IN_BUFFER, OUT_BUFFER};
     use alloc::sync::Arc;
     use lazy_static::*;
     use spin::Mutex;
-    use uart8250::MmioUart8250;
+    #[cfg(feature = "board_qemu")]
+    use uart8250::{InterruptType, MmioUart8250};
+    #[cfg(feature = "board_qemu")]
     pub const UART_BASE_ADDRESS: usize = 0x1000_0100;
+    #[cfg(feature = "board_qemu")]
     pub const UART_IRQN: u16 = 9;
 
+    #[cfg(feature = "board_qemu")]
     lazy_static! {
         pub static ref UART: Arc<Mutex<MmioUart8250<'static>>> =
             Arc::new(Mutex::new(MmioUart8250::new(UART_BASE_ADDRESS)));
     }
 
+    #[cfg(feature = "board_lrv")]
+    use uart_xilinx::uart_16550::{InterruptType, MmioUartAxi16550};
+    #[cfg(feature = "board_lrv")]
+    pub const UART_BASE_ADDRESS: usize = 0x6000_2000;
+    #[cfg(feature = "board_lrv")]
+    pub const UART_IRQN: u16 = 5;
+
+    #[cfg(feature = "board_lrv")]
+    lazy_static! {
+        pub static ref UART: Arc<Mutex<MmioUartAxi16550<'static>>> =
+            Arc::new(Mutex::new(MmioUartAxi16550::new(UART_BASE_ADDRESS)));
+    }
+
     pub fn init() {
         let uart = UART.lock();
-        uart.init(11_059_200, 115200);
+        uart.init(100_000_000, 115200);
         // Rx FIFO trigger level=14, reset Rx & Tx FIFO, enable FIFO
         uart.write_fcr(0b11_000_11_1);
     }
@@ -111,22 +129,17 @@ pub mod uart {
 
     pub fn handle_interrupt() {
         let uart = UART.lock();
-        let int_id = uart.read_iir();
-        // No interrupt is pending
-        if int_id & 0b1 == 1 {
-            return;
-        }
-        let int_id = (int_id >> 1) & 0b111;
-        match int_id {
-            // Received Data Available
-            0b010 => {
+        let int_type = uart.read_interrupt_type();
+        match int_type {
+            InterruptType::ReceivedDataAvailable => {
+                println!("Received data available");
                 let mut stdin = IN_BUFFER.lock();
                 while let Some(ch) = uart.read_byte() {
                     stdin.push_back(ch);
                 }
             }
-            // Transmitter Holding Register Empty
-            0b001 => {
+            InterruptType::TransmitterHoldingRegisterEmpty => {
+                println!("Transmitter Holding Register Empty");
                 let mut stdout = OUT_BUFFER.lock();
                 for _ in 0..FIFO_DEPTH {
                     if let Some(ch) = stdout.pop_front() {
@@ -142,7 +155,7 @@ pub mod uart {
     }
 }
 
-#[cfg(feature = "board_lrv")]
+#[cfg(feature = "board_lrv_uartlite")]
 mod uart {
     use crate::user_console::{IN_BUFFER, OUT_BUFFER};
     use alloc::sync::Arc;
@@ -209,7 +222,7 @@ mod user_console {
             Arc::new(Mutex::new(VecDeque::with_capacity(DEFAULT_OUT_BUFFER_SIZE)));
     }
 
-    #[cfg(feature = "board_qemu")]
+    #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     #[allow(dead_code)]
     pub fn push_stdout(c: u8) {
         let uart = UART.lock();
@@ -224,7 +237,7 @@ mod user_console {
         }
     }
 
-    #[cfg(feature = "board_lrv")]
+    #[cfg(feature = "board_lrv_uartlite")]
     #[allow(dead_code)]
     pub fn push_stdout(c: u8) {
         let uart = UART.lock();

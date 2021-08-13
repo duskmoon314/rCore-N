@@ -18,6 +18,7 @@ const SYSCALL_INIT_USER_TRAP: usize = 600;
 const SYSCALL_SEND_MSG: usize = 601;
 const SYSCALL_SET_TIMER: usize = 602;
 const SYSCALL_CLAIM_EXT_INT: usize = 603;
+const SYSCALL_SET_EXT_INT_ENABLE: usize = 604;
 
 fn syscall(id: usize, args: [usize; 3]) -> isize {
     let mut ret: isize;
@@ -110,4 +111,8 @@ pub fn sys_set_timer(time_us: isize) -> isize {
 
 pub fn sys_claim_ext_int(device_id: usize) -> isize {
     syscall(SYSCALL_CLAIM_EXT_INT, [device_id as usize, 0, 0])
+}
+
+pub fn sys_set_ext_int_enable(device_id: usize, enable: usize) -> isize {
+    syscall(SYSCALL_SET_EXT_INT_ENABLE, [device_id as usize, enable, 0])
 }

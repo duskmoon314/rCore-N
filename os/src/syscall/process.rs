@@ -2,9 +2,9 @@ use core::mem::size_of;
 
 use crate::loader::get_app_data_by_name;
 use crate::mm;
-use crate::plic::Plic;
+use crate::plic::{get_context, Plic};
 use crate::task::{
-    add_task, current_task, current_user_token, exit_current_and_run_next, mmap, munmap,
+    add_task, current_task, current_user_token, exit_current_and_run_next, hart_id, mmap, munmap,
     set_current_priority, suspend_current_and_run_next,
 };
 use crate::trap::{push_trap_record, UserTrapRecord};
@@ -200,7 +200,7 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
                     device_id, pid
                 );
                 map.insert(device_id, pid);
-                info.devices.push(device_id);
+                info.devices.push((device_id, false));
                 let claim_addr = Plic::context_address(plic::get_context(0, 'U'));
                 if let Err(_) = inner.memory_set.mmio_map(
                     claim_addr,
@@ -228,6 +228,52 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
                     Err(_) => -3,
                 },
                 _ => -4,
+            }
+        }
+        None => {
+            warn!("[syscall claim] user trap info is None!");
+            -5
+        }
+    }
+}
+
+pub fn sys_set_ext_int_enable(device_id: usize, enable: usize) -> isize {
+    let device_id = device_id as u16;
+    let is_enable = enable > 0;
+    let current_task = current_task().unwrap();
+    let mut inner = current_task.acquire_inner_lock();
+    if !inner.is_user_trap_enabled() {
+        return -1;
+    }
+    use crate::trap::USER_EXT_INT_MAP;
+    let user_trap_info = &mut inner.user_trap_info;
+    match user_trap_info {
+        Some(info) => {
+            if let Some(pid) = USER_EXT_INT_MAP.lock().get(&device_id) {
+                if *pid == current_task.getpid() {
+                    for (dev_id, en) in &mut info.devices {
+                        if *dev_id == device_id {
+                            *en = is_enable;
+                            if is_enable {
+                                Plic::enable(get_context(hart_id(), 'U'), device_id);
+                            } else {
+                                Plic::disable(get_context(hart_id(), 'U'), device_id);
+                            }
+                        }
+                    }
+
+                    return 0;
+                } else {
+                    warn!(
+                        "[sys set ext] device {} not held by pid {}!",
+                        device_id,
+                        current_task.getpid()
+                    );
+                    return -1;
+                }
+            } else {
+                warn!("[sys set ext] device not claimed!");
+                return -2;
             }
         }
         None => {
