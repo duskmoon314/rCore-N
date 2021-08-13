@@ -1,12 +1,17 @@
 use crate::config::{KERNEL_STACK_SIZE, PAGE_SIZE, TRAMPOLINE};
 use crate::mm::{MapPermission, VirtAddr, KERNEL_SPACE};
+use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use lazy_static::*;
 use spin::Mutex;
 
+use super::task::TaskControlBlock;
+
 struct PidAllocator {
     current: usize,
     recycled: Vec<usize>,
+    task_table: BTreeMap<usize, Arc<TaskControlBlock>>,
 }
 
 impl PidAllocator {
@@ -14,20 +19,34 @@ impl PidAllocator {
         PidAllocator {
             current: 0,
             recycled: Vec::new(),
+            task_table: BTreeMap::new(),
         }
     }
     pub fn alloc(&mut self) -> PidHandle {
-        if let Some(pid) = self.recycled.pop() {
-            PidHandle(pid)
-        } else {
-            self.current += 1;
-            PidHandle(self.current - 1)
+        let pid = match self.recycled.pop() {
+            Some(pid) => pid,
+            None => {
+                self.current += 1;
+                self.current - 1
+            }
+        };
+        PidHandle(pid)
+    }
+    pub fn add_task(&mut self, pid: usize, task: Arc<TaskControlBlock>) -> Result<(), usize> {
+        match self.task_table.try_insert(pid, task) {
+            Ok(_) => Ok(()),
+            Err(err) => Err(*err.entry.key()),
         }
     }
     pub fn dealloc(&mut self, pid: usize) {
         assert!(pid < self.current);
+        // assert!(
+        //     self.recycled.iter().find(|ppid| **ppid == pid).is_none(),
+        //     "pid {} has been deallocated!",
+        //     pid
+        // );
         assert!(
-            self.recycled.iter().find(|ppid| **ppid == pid).is_none(),
+            self.task_table.remove(&pid).is_some(),
             "pid {} has been deallocated!",
             pid
         );
@@ -57,6 +76,14 @@ impl PartialEq<usize> for PidHandle {
 
 pub fn pid_alloc() -> PidHandle {
     PID_ALLOCATOR.lock().alloc()
+}
+
+pub fn add_task_2_map(pid: usize, task: Arc<TaskControlBlock>) {
+    PID_ALLOCATOR.lock().add_task(pid, task).unwrap();
+}
+
+pub fn find_task(pid: usize) -> Option<Arc<TaskControlBlock>> {
+    PID_ALLOCATOR.lock().task_table.get(&pid).cloned()
 }
 
 /// Return (bottom, top) of a kernel stack in kernel space.

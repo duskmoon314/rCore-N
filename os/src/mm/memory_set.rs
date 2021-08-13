@@ -158,8 +158,8 @@ impl MemorySet {
         #[cfg(feature = "board_qemu")]
         memory_set.push(
             MapArea::new(
-                (0x1000_0000 as usize).into(),
-                (0x1000_0300 as usize).into(),
+                (0x1000_0000_usize).into(),
+                (0x1000_0300_usize).into(),
                 MapType::Mmio,
                 MapPermission::R | MapPermission::W,
             ),
@@ -168,8 +168,8 @@ impl MemorySet {
         #[cfg(feature = "board_lrv")]
         memory_set.push(
             MapArea::new(
-                (0x6000_0000 as usize).into(),
-                (0x6000_4000 as usize).into(),
+                (0x6000_0000_usize).into(),
+                (0x6000_4000_usize).into(),
                 MapType::Mmio,
                 MapPermission::R | MapPermission::W,
             ),

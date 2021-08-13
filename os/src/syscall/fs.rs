@@ -95,11 +95,11 @@ pub fn sys_mailwrite(pid: usize, buf: *mut u8, len: usize) -> isize {
         if let Ok(buffers) = translated_byte_buffer(token, buf, min(len, 256)) {
             let socket = receive_task.create_socket();
             match socket.write(UserBuffer::new(buffers)) {
-                Ok(write_len) => return write_len as isize,
-                Err(_) => return -1,
+                Ok(write_len) => write_len as isize,
+                Err(_) => -1,
             }
         } else {
-            return -1;
+            -1
         }
     } else {
         debug!("not find task");

@@ -113,7 +113,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     if let Some((idx, _)) = pair {
         let child = inner.children.remove(idx);
         // confirm that child will be deallocated after removing from children list
-        assert_eq!(Arc::strong_count(&child), 1);
+        assert_eq!(Arc::strong_count(&child), 2);
         let found_pid = child.getpid();
         // ++++ temporarily hold child lock
         let exit_code = child.acquire_inner_lock().exit_code;
@@ -158,13 +158,15 @@ pub fn sys_init_user_trap() -> isize {
 }
 
 pub fn sys_send_msg(pid: usize, msg: usize) -> isize {
-    if let Ok(_) = push_trap_record(
+    if push_trap_record(
         pid,
         UserTrapRecord {
             cause: pid << 4,
             message: msg,
         },
-    ) {
+    )
+    .is_ok()
+    {
         0
     } else {
         -1
@@ -202,11 +204,11 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
                 map.insert(device_id, pid);
                 info.devices.push((device_id, false));
                 let claim_addr = Plic::context_address(plic::get_context(0, 'U'));
-                if let Err(_) = inner.memory_set.mmio_map(
-                    claim_addr,
-                    claim_addr + crate::config::PAGE_SIZE,
-                    0b11,
-                ) {
+                if inner
+                    .memory_set
+                    .mmio_map(claim_addr, claim_addr + crate::config::PAGE_SIZE, 0b11)
+                    .is_err()
+                {
                     warn!("[syscall claim] map plic claim reg failed!");
                     return -6;
                 }

@@ -37,7 +37,7 @@ impl UserTrapInfo {
         if self.user_trap_record_num < MAX_USER_TRAP_NUM {
             let head_ptr: *mut UserTrapRecord =
                 self.user_trap_buffer_ppn.get_mut::<UserTrapRecord>();
-            let tail_ptr = head_ptr.offset(self.user_trap_record_num as isize);
+            let tail_ptr = head_ptr.add(self.user_trap_record_num);
             tail_ptr.write(trap_record);
             self.user_trap_record_num += 1;
             Ok(self.user_trap_record_num)

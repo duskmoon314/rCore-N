@@ -117,7 +117,7 @@ impl File for Socket {
 
     fn write(&self, buf: UserBuffer) -> Result<usize, isize> {
         debug!("socket try to write");
-        assert_eq!(self.writable, true);
+        assert!(self.writable);
         let mut buf_iter = buf.into_iter();
         let mut write_size: usize = 0;
 
@@ -197,12 +197,10 @@ impl MailRingBuffer {
         debug!("available_read {:?}", self.status);
         if self.status == MailBufferStatus::EMPTY {
             0
+        } else if self.tail > self.head {
+            self.tail - self.head
         } else {
-            if self.tail > self.head {
-                self.tail - self.head
-            } else {
-                self.tail + MAIL_BUFFER_SIZE - self.head
-            }
+            self.tail + MAIL_BUFFER_SIZE - self.head
         }
     }
 

@@ -2,6 +2,7 @@ use super::TaskContext;
 use super::{pid_alloc, KernelStack, PidHandle};
 use crate::fs::{File, MailBox, Socket, Stdin, Stdout};
 use crate::mm::{translate_writable_va, MemorySet, PhysAddr, PhysPageNum, VirtAddr, KERNEL_SPACE};
+use crate::task::pid::add_task_2_map;
 use crate::trap::{trap_handler, TrapContext, UserTrapInfo};
 use crate::{
     config::{PAGE_SIZE, TRAP_CONTEXT, USER_TRAP_BUFFER},
@@ -103,9 +104,9 @@ impl TaskControlBlockInner {
 
     pub fn init_user_trap(&mut self) -> Result<isize, isize> {
         use riscv::register::sstatus;
-        if let None = self.user_trap_info {
+        if self.user_trap_info.is_none() {
             // R | W
-            if let Ok(_) = self.mmap(USER_TRAP_BUFFER, PAGE_SIZE, 0b11) {
+            if self.mmap(USER_TRAP_BUFFER, PAGE_SIZE, 0b11).is_ok() {
                 let phys_addr =
                     translate_writable_va(self.get_user_token(), USER_TRAP_BUFFER).unwrap();
                 self.user_trap_info = Some(UserTrapInfo {
@@ -147,7 +148,7 @@ impl TaskControlBlock {
     pub fn acquire_inner_lock(&self) -> MutexGuard<TaskControlBlockInner> {
         self.inner.lock()
     }
-    pub fn new(elf_data: &[u8]) -> Self {
+    pub fn new(elf_data: &[u8]) -> Arc<TaskControlBlock> {
         // memory_set with elf program headers/trampoline/trap context/user stack
         let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
         let trap_cx_ppn = memory_set
@@ -161,7 +162,7 @@ impl TaskControlBlock {
         // push a task context which goes to trap_return to the top of kernel stack
         let task_cx_ptr = kernel_stack.push_on_top(TaskContext::goto_trap_return());
         debug!("new task cx ptr: {:#x?}", task_cx_ptr as usize);
-        let task_control_block = Self {
+        let task_control_block = Arc::new(TaskControlBlock {
             pid: pid_handle,
             kernel_stack,
             inner: Mutex::new(TaskControlBlockInner {
@@ -185,7 +186,8 @@ impl TaskControlBlock {
                 ],
                 mail_box: Arc::new(MailBox::new()),
             }),
-        };
+        });
+        add_task_2_map(task_control_block.getpid(), task_control_block.clone());
         // prepare TrapContext in user space
         let trap_cx = task_control_block.acquire_inner_lock().get_trap_cx();
         *trap_cx = TrapContext::app_init_context(
@@ -277,6 +279,7 @@ impl TaskControlBlock {
                 mail_box: Arc::new(MailBox::new()),
             }),
         });
+        add_task_2_map(task_control_block.getpid(), task_control_block.clone());
         // add child
         parent_inner.children.push(task_control_block.clone());
         // modify kernel_sp in trap_cx
@@ -338,7 +341,7 @@ impl TaskControlBlock {
                     mail_box: Arc::new(MailBox::new()),
                 }),
             });
-
+            add_task_2_map(task_control_block.getpid(), task_control_block.clone());
             parent_inner.children.push(task_control_block.clone());
             let trap_cx = task_control_block.acquire_inner_lock().get_trap_cx();
             *trap_cx = TrapContext::app_init_context(

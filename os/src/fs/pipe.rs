@@ -77,12 +77,10 @@ impl PipeRingBuffer {
     pub fn available_read(&self) -> usize {
         if self.status == RingBufferStatus::EMPTY {
             0
+        } else if self.tail > self.head {
+            self.tail - self.head
         } else {
-            if self.tail > self.head {
-                self.tail - self.head
-            } else {
-                self.tail + RING_BUFFER_SIZE - self.head
-            }
+            self.tail + RING_BUFFER_SIZE - self.head
         }
     }
     pub fn available_write(&self) -> usize {
@@ -108,7 +106,7 @@ pub fn make_pipe() -> (Arc<Pipe>, Arc<Pipe>) {
 
 impl File for Pipe {
     fn read(&self, buf: UserBuffer) -> Result<usize, isize> {
-        assert_eq!(self.readable, true);
+        assert!(self.readable);
         let mut buf_iter = buf.into_iter();
         let mut read_size = 0usize;
         loop {
@@ -136,7 +134,7 @@ impl File for Pipe {
         }
     }
     fn write(&self, buf: UserBuffer) -> Result<usize, isize> {
-        assert_eq!(self.writable, true);
+        assert!(self.writable);
         let mut buf_iter = buf.into_iter();
         let mut write_size = 0usize;
         loop {
