@@ -9,17 +9,22 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 use lazy_static::*;
 lazy_static! {
-    pub static ref PROCESSORS: Vec<Processor> = {
-        let mut processors = Vec::new();
-        for _ in 0..CPU_NUM {
-            processors.push(Processor::new());
-        }
-        processors
-    };
+    pub static ref PROCESSORS: [Processor; CPU_NUM] = Default::default();
 }
 
 pub struct Processor {
     inner: RefCell<ProcessorInner>,
+}
+
+impl Default for Processor {
+    fn default() -> Self {
+        Self {
+            inner: RefCell::new(ProcessorInner {
+                current: None,
+                idle_task_cx_ptr: 0,
+            }),
+        }
+    }
 }
 
 unsafe impl Sync for Processor {}
