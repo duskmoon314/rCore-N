@@ -52,35 +52,36 @@ const FIFO_DEPTH: usize = 16;
 #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 pub fn handle_interrupt() {
     let uart = UART.lock();
-    let int_type = uart.read_interrupt_type();
-    match int_type {
-        InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
-            trace!("Received data available");
-            let mut stdin = IN_BUFFER.lock();
-            while let Some(ch) = uart.read_byte() {
-                stdin.push_back(ch);
-            }
-        }
-        InterruptType::TransmitterHoldingRegisterEmpty => {
-            trace!("TransmitterHoldingRegisterEmpty");
-            let mut stdout = OUT_BUFFER.lock();
-            for _ in 0..FIFO_DEPTH {
-                if let Some(ch) = stdout.pop_front() {
-                    uart.write_byte(ch);
-                } else {
-                    uart.disable_transmitter_holding_register_empty_interrupt();
-                    break;
+    if let Some(int_type) = uart.read_interrupt_type() {
+        match int_type {
+            InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
+                trace!("Received data available");
+                let mut stdin = IN_BUFFER.lock();
+                while let Some(ch) = uart.read_byte() {
+                    stdin.push_back(ch);
                 }
             }
-        }
-        InterruptType::ModemStatus => {
-            let ms = uart.read_msr();
-            let ls = uart.read_lsr();
-            let ie = uart.read_ier();
-            trace!("MSR: {:#x}, LSR: {:#x}, IER: {:#x}", ms, ls, ie);
-        }
-        _ => {
-            warn!("[UART] {:?} not supported!", int_type);
+            InterruptType::TransmitterHoldingRegisterEmpty => {
+                trace!("TransmitterHoldingRegisterEmpty");
+                let mut stdout = OUT_BUFFER.lock();
+                for _ in 0..FIFO_DEPTH {
+                    if let Some(ch) = stdout.pop_front() {
+                        uart.write_byte(ch);
+                    } else {
+                        uart.disable_transmitter_holding_register_empty_interrupt();
+                        break;
+                    }
+                }
+            }
+            InterruptType::ModemStatus => {
+                let ms = uart.read_msr();
+                let ls = uart.read_lsr();
+                let ie = uart.read_ier();
+                trace!("MSR: {:#x}, LSR: {:#x}, IER: {:#x}", ms, ls, ie);
+            }
+            _ => {
+                warn!("[UART] {:?} not supported!", int_type);
+            }
         }
     }
 }

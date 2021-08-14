@@ -129,33 +129,34 @@ pub mod uart {
 
     pub fn handle_interrupt() {
         let uart = UART.lock();
-        let int_type = uart.read_interrupt_type();
-        match int_type {
-            InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
-                println!("Received data available");
-                let mut stdin = IN_BUFFER.lock();
-                while let Some(ch) = uart.read_byte() {
-                    stdin.push_back(ch);
-                }
-            }
-            InterruptType::TransmitterHoldingRegisterEmpty => {
-                println!("Transmitter Holding Register Empty");
-                let mut stdout = OUT_BUFFER.lock();
-                for _ in 0..FIFO_DEPTH {
-                    if let Some(ch) = stdout.pop_front() {
-                        uart.write_byte(ch);
-                    } else {
-                        uart.disable_transmitter_holding_register_empty_interrupt();
-                        break;
+        if let Some(int_type) = uart.read_interrupt_type() {
+            match int_type {
+                InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
+                    println!("Received data available");
+                    let mut stdin = IN_BUFFER.lock();
+                    while let Some(ch) = uart.read_byte() {
+                        stdin.push_back(ch);
                     }
                 }
-            }
-            InterruptType::ModemStatus => {
-                let ms = uart.read_msr();
-                println!("Modem Status: {:#x}", ms);
-            }
-            _ => {
-                println!("[uart ext] {:?} not supported!", int_type);
+                InterruptType::TransmitterHoldingRegisterEmpty => {
+                    println!("Transmitter Holding Register Empty");
+                    let mut stdout = OUT_BUFFER.lock();
+                    for _ in 0..FIFO_DEPTH {
+                        if let Some(ch) = stdout.pop_front() {
+                            uart.write_byte(ch);
+                        } else {
+                            uart.disable_transmitter_holding_register_empty_interrupt();
+                            break;
+                        }
+                    }
+                }
+                InterruptType::ModemStatus => {
+                    let ms = uart.read_msr();
+                    println!("Modem Status: {:#x}", ms);
+                }
+                _ => {
+                    println!("[uart ext] {:?} not supported!", int_type);
+                }
             }
         }
     }
@@ -321,6 +322,25 @@ mod user_trap {
 
     use crate::uart::{handle_interrupt, UART_IRQN};
 
+    pub fn hart_id() -> usize {
+        let hart_id: usize;
+        unsafe {
+            asm!("mv {}, tp", out(reg) hart_id);
+        }
+        hart_id
+    }
+
+    pub fn get_context(hart_id: usize, mode: char) -> usize {
+        const MODE_PER_HART: usize = 3;
+        hart_id * MODE_PER_HART
+            + match mode {
+                'M' => 0,
+                'S' => 1,
+                'U' => 2,
+                _ => panic!("Wrong Mode"),
+            }
+    }
+
     #[no_mangle]
     pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
         let ucause = ucause::read();
@@ -363,7 +383,7 @@ mod user_trap {
                 }
             }
             ucause::Trap::Interrupt(ucause::Interrupt::UserExternal) => {
-                if let Some(irq) = Plic::claim(2) {
+                if let Some(irq) = Plic::claim(get_context(hart_id(), 'U')) {
                     println!("[uart ext] user external interrupt, irq: {}", irq);
                     if irq == UART_IRQN {
                         handle_interrupt();

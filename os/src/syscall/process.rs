@@ -1,5 +1,6 @@
 use core::mem::size_of;
 
+use crate::config::CPU_NUM;
 use crate::loader::get_app_data_by_name;
 use crate::mm;
 use crate::plic::{get_context, Plic};
@@ -203,14 +204,16 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
                 );
                 map.insert(device_id, pid);
                 info.devices.push((device_id, false));
-                let claim_addr = Plic::context_address(plic::get_context(0, 'U'));
-                if inner
-                    .memory_set
-                    .mmio_map(claim_addr, claim_addr + crate::config::PAGE_SIZE, 0b11)
-                    .is_err()
-                {
-                    warn!("[syscall claim] map plic claim reg failed!");
-                    return -6;
+                for hart_id in 0..CPU_NUM {
+                    let claim_addr = Plic::context_address(plic::get_context(hart_id, 'U'));
+                    if inner
+                        .memory_set
+                        .mmio_map(claim_addr, claim_addr + crate::config::PAGE_SIZE, 0b11)
+                        .is_err()
+                    {
+                        warn!("[syscall claim] map plic claim reg failed!");
+                        return -6;
+                    }
                 }
             }
             match device_id {
@@ -240,6 +243,7 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
 }
 
 pub fn sys_set_ext_int_enable(device_id: usize, enable: usize) -> isize {
+    debug!("[SET EXT INT] dev: {}, enable: {}", device_id, enable);
     let device_id = device_id as u16;
     let is_enable = enable > 0;
     let current_task = current_task().unwrap();
