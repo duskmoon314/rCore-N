@@ -35,8 +35,11 @@ pub fn main() -> i32 {
             uie::clear_usoft();
             uie::clear_utimer();
         }
-        let c = pop_stdin();
-        if c != 0 {
+        loop {
+            let c = pop_stdin();
+            if c == 0 {
+                break;
+            }
             match c {
                 LF | CR => {
                     user_println!("");
@@ -65,6 +68,7 @@ pub fn main() -> i32 {
             uie::set_usoft();
             uie::set_utimer();
         }
+        // for _ in 0..1_0000 {}
         yield_();
     }
 }
@@ -128,18 +132,19 @@ pub mod uart {
     const FIFO_DEPTH: usize = 16;
 
     pub fn handle_interrupt() {
+        // println!("irq acq lock");
         let uart = UART.lock();
         if let Some(int_type) = uart.read_interrupt_type() {
             match int_type {
                 InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
-                    println!("Received data available");
+                    // println!("Received data available");
                     let mut stdin = IN_BUFFER.lock();
                     while let Some(ch) = uart.read_byte() {
                         stdin.push_back(ch);
                     }
                 }
                 InterruptType::TransmitterHoldingRegisterEmpty => {
-                    println!("Transmitter Holding Register Empty");
+                    // println!("Transmitter Holding Register Empty");
                     let mut stdout = OUT_BUFFER.lock();
                     for _ in 0..FIFO_DEPTH {
                         if let Some(ch) = stdout.pop_front() {
@@ -151,14 +156,14 @@ pub mod uart {
                     }
                 }
                 InterruptType::ModemStatus => {
-                    let ms = uart.read_msr();
-                    println!("Modem Status: {:#x}", ms);
+                    println!("Modem Status: {:#x}", uart.read_msr());
                 }
                 _ => {
                     println!("[uart ext] {:?} not supported!", int_type);
                 }
             }
         }
+        // println!("irq release lock");
     }
 }
 
@@ -233,7 +238,23 @@ mod user_console {
     #[allow(dead_code)]
     pub fn push_stdout(c: u8) {
         let uart = UART.lock();
+        // use riscv::register::{uie, uip, ustatus};
+        // println!("con out acq lock");
+        // println!(
+        //     "MSR: {:#x}, LSR: {:#x}, IER: {:#x}, IIR: {:#x}",
+        //     uart.read_msr(),
+        //     uart.read_lsr(),
+        //     uart.read_ier(),
+        //     uart.read_iir()
+        // );
+        // println!(
+        //     "UIE: {:?}, UIP: {:?}, USTATUS: {:?}",
+        //     uie::read(),
+        //     uip::read(),
+        //     ustatus::read()
+        // );
         if !uart.is_transmitter_holding_register_empty_interrupt_enabled() {
+            // println!("cold start");
             uart.write_byte(c);
             uart.enable_transmitter_holding_register_empty_interrupt();
         } else {
@@ -242,6 +263,7 @@ mod user_console {
                 out_buffer.push_back(c);
             }
         }
+        // println!("con out release lock");
     }
 
     #[cfg(feature = "board_lrv_uartlite")]
@@ -277,6 +299,7 @@ mod user_console {
         if let Some(ch) = in_buffer.pop_front() {
             ch
         } else {
+            // println!("con in acq lock");
             #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
             {
                 // Drain UART Rx FIFO
@@ -285,6 +308,7 @@ mod user_console {
                     in_buffer.push_back(ch_read);
                 }
             }
+            // println!("con in release lock");
             in_buffer.pop_front().unwrap_or(0)
         }
     }
@@ -383,12 +407,12 @@ mod user_trap {
                 }
             }
             ucause::Trap::Interrupt(ucause::Interrupt::UserExternal) => {
-                if let Some(irq) = Plic::claim(get_context(hart_id(), 'U')) {
+                while let Some(irq) = Plic::claim(get_context(hart_id(), 'U')) {
                     println!("[uart ext] user external interrupt, irq: {}", irq);
                     if irq == UART_IRQN {
                         handle_interrupt();
                     }
-                    Plic::complete(2, irq);
+                    Plic::complete(get_context(hart_id(), 'U'), irq);
                 }
                 // println!("[user trap] user external finished");
             }

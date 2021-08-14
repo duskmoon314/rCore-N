@@ -49,27 +49,40 @@ impl UserTrapInfo {
     }
 
     pub fn enable_user_ext_int(&self) {
+        let u_context = get_context(hart_id(), 'U');
         for (device_id, is_enabled) in &self.devices {
             for hart_id in 0..CPU_NUM {
                 Plic::disable(get_context(hart_id, 'S'), *device_id);
             }
             if *is_enabled {
-                Plic::enable(get_context(hart_id(), 'U'), *device_id);
+                Plic::enable(u_context, *device_id);
             } else {
-                Plic::disable(get_context(hart_id(), 'U'), *device_id);
+                Plic::disable(u_context, *device_id);
             }
         }
+        // debug!(
+        //     "ena, S: {:#x}, U: {:#x}, 5 pending: {}",
+        //     Plic::get_enable(get_context(hart_id(), 'S'), 0),
+        //     Plic::get_enable(u_context, 0),
+        //     Plic::is_pending(5)
+        // );
     }
 
     pub fn disable_user_ext_int(&self) {
+        let hart_id = hart_id();
         for (device_id, is_enabled) in &self.devices {
-            Plic::disable(get_context(hart_id(), 'U'), *device_id);
+            Plic::disable(get_context(hart_id, 'U'), *device_id);
             if *is_enabled {
-                Plic::enable(get_context(hart_id(), 'S'), *device_id);
+                Plic::enable(get_context(hart_id, 'S'), *device_id);
             } else {
-                Plic::disable(get_context(hart_id(), 'S'), *device_id);
+                Plic::disable(get_context(hart_id, 'S'), *device_id);
             }
         }
+        // debug!(
+        //     "dis, S: {:#x}, U: {:#x}",
+        //     Plic::get_enable(get_context(hart_id, 'S'), 0),
+        //     Plic::get_enable(get_context(hart_id, 'U'), 0)
+        // );
     }
 
     pub fn remove_user_ext_int_map(&self) {
@@ -101,7 +114,7 @@ pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<usize
     if let Some(tcb) = crate::task::find_task(pid) {
         let mut tcb_inner = tcb.acquire_inner_lock();
         if !tcb_inner.is_user_trap_enabled() {
-            // warn!("[push trap record] User trap disabled!");
+            warn!("[push trap record] User trap disabled!");
             return Err(UserTrapError::TrapDisabled);
         }
         if let Some(trap_info) = &mut tcb_inner.user_trap_info {

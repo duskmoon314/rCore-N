@@ -74,10 +74,12 @@ pub fn handle_interrupt() {
                 }
             }
             InterruptType::ModemStatus => {
-                let ms = uart.read_msr();
-                let ls = uart.read_lsr();
-                let ie = uart.read_ier();
-                trace!("MSR: {:#x}, LSR: {:#x}, IER: {:#x}", ms, ls, ie);
+                trace!(
+                    "MSR: {:#x}, LSR: {:#x}, IER: {:#x}",
+                    uart.read_msr(),
+                    uart.read_lsr(),
+                    uart.read_ier()
+                );
             }
             _ => {
                 warn!("[UART] {:?} not supported!", int_type);

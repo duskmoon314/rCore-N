@@ -49,10 +49,11 @@ pub fn init_hart(hart_id: usize) {
 }
 
 pub fn handle_external_interrupt(hart_id: usize) {
-    if let Some(irq) = Plic::claim(get_context(hart_id, 'S')) {
+    let context = get_context(hart_id, 'S');
+    while let Some(irq) = Plic::claim(context) {
         let mut can_user_handle = false;
         if let Some(pid) = USER_EXT_INT_MAP.lock().get(&irq) {
-            trace!("[PLIC] irq {:?} mapped to pid {:?}", irq, pid);
+            debug!("[PLIC] irq {:?} mapped to pid {:?}", irq, pid);
             if push_trap_record(
                 *pid,
                 UserTrapRecord {
@@ -65,6 +66,8 @@ pub fn handle_external_interrupt(hart_id: usize) {
             {
                 can_user_handle = true;
             }
+            Plic::complete(context, irq);
+            Plic::disable(context, irq);
         }
         if !can_user_handle {
             match irq {
@@ -76,13 +79,13 @@ pub fn handle_external_interrupt(hart_id: usize) {
                 #[cfg(feature = "board_lrv")]
                 4 => {
                     uart::handle_interrupt();
-                    debug!("[PLIC] kenel handling uart");
+                    trace!("[PLIC] kenel handling uart");
                 }
                 _ => {
-                    warn!("[PLIC]: irq {:?} not supported!", irq);
+                    debug!("[PLIC]: irq {:?} not supported!", irq);
                 }
             }
         }
-        Plic::complete(get_context(0, 'S'), irq)
+        Plic::complete(context, irq);
     }
 }
