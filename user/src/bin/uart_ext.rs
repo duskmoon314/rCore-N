@@ -18,17 +18,17 @@ const BS: u8 = 0x08u8;
 
 #[no_mangle]
 pub fn main() -> i32 {
-    println!("[uart ext] A user mode serial driver demo using external interrupt");
+    println!("[uart ext] A user mode serial driver demo using UEI");
     let init_res = init_user_trap();
     let claim_res = claim_ext_int(uart::UART_IRQN as usize);
-    println!(
-        "[uart ext] init result: 0x{:x?}, claim result: 0x{:x?}",
-        init_res as usize, claim_res
-    );
     uart::init();
-    user_println!("Hello from user UART!");
+    let en_res = set_ext_int_enable(uart::UART_IRQN as usize, 1);
+    println!(
+        "[uart ext] init result: {:#x}, claim result: {:#x}, enable res: {:#x}",
+        init_res as usize, claim_res, en_res
+    );
     let mut line = String::new();
-    set_ext_int_enable(uart::UART_IRQN as usize, 1);
+    user_println!("Hello from user UART!");
     loop {
         unsafe {
             uie::clear_uext();
@@ -37,9 +37,6 @@ pub fn main() -> i32 {
         }
         let c = pop_stdin();
         if c != 0 {
-            // If you recognize this code, it used to be in the lib.rs under kmain(). That
-            // was because we needed to poll for UART data. Now that we have interrupts,
-            // here it goes!
             match c {
                 LF | CR => {
                     user_println!("");
@@ -68,7 +65,7 @@ pub fn main() -> i32 {
             uie::set_usoft();
             uie::set_utimer();
         }
-        yield_();
+        // yield_();
     }
 }
 
@@ -120,6 +117,9 @@ pub mod uart {
 
     pub fn init() {
         let uart = UART.lock();
+        uart.write_ier(0);
+        let _ = uart.read_msr();
+        let _ = uart.read_lsr();
         uart.init(100_000_000, 115200);
         // Rx FIFO trigger level=14, reset Rx & Tx FIFO, enable FIFO
         uart.write_fcr(0b11_000_11_1);
@@ -131,7 +131,7 @@ pub mod uart {
         let uart = UART.lock();
         let int_type = uart.read_interrupt_type();
         match int_type {
-            InterruptType::ReceivedDataAvailable => {
+            InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
                 println!("Received data available");
                 let mut stdin = IN_BUFFER.lock();
                 while let Some(ch) = uart.read_byte() {
@@ -150,7 +150,13 @@ pub mod uart {
                     }
                 }
             }
-            _ => {}
+            InterruptType::ModemStatus => {
+                let ms = uart.read_msr();
+                println!("Modem Status: {:#x}", ms);
+            }
+            _ => {
+                println!("[uart ext] {:?} not supported!", int_type);
+            }
         }
     }
 }

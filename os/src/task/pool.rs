@@ -2,7 +2,7 @@ use alloc::{collections::BTreeSet, sync::Arc};
 use lazy_static::*;
 use spin::Mutex;
 
-use super::{manager::TaskManager, processor::current_tasks, task::TaskControlBlock};
+use super::{manager::TaskManager, task::TaskControlBlock};
 
 pub struct TaskPool {
     pub scheduler: TaskManager,

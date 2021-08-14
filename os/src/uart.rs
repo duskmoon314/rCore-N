@@ -18,7 +18,7 @@ lazy_static! {
 #[cfg(feature = "board_lrv")]
 lazy_static! {
     pub static ref UART: Arc<Mutex<MmioUartAxi16550<'static>>> =
-        Arc::new(Mutex::new(MmioUartAxi16550::new(0x1000_0200)));
+        Arc::new(Mutex::new(MmioUartAxi16550::new(0x6000_1000)));
 }
 
 #[cfg(feature = "board_lrv_uartlite")]
@@ -33,6 +33,9 @@ lazy_static! {
 #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 pub fn init() {
     let uart = UART.lock();
+    uart.write_ier(0);
+    let _ = uart.read_msr();
+    let _ = uart.read_lsr();
     uart.init(100_000_000, 115200);
     // Rx FIFO trigger level=14, reset Rx & Tx FIFO, enable FIFO
     uart.write_fcr(0b11_000_11_1);
@@ -50,18 +53,16 @@ const FIFO_DEPTH: usize = 16;
 pub fn handle_interrupt() {
     let uart = UART.lock();
     let int_type = uart.read_interrupt_type();
-    // No interrupt is pending
-    // if int_id & 0b1 == 1 {
-    //     return;
-    // }
     match int_type {
-        InterruptType::ReceivedDataAvailable => {
+        InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
+            trace!("Received data available");
             let mut stdin = IN_BUFFER.lock();
             while let Some(ch) = uart.read_byte() {
                 stdin.push_back(ch);
             }
         }
         InterruptType::TransmitterHoldingRegisterEmpty => {
+            trace!("TransmitterHoldingRegisterEmpty");
             let mut stdout = OUT_BUFFER.lock();
             for _ in 0..FIFO_DEPTH {
                 if let Some(ch) = stdout.pop_front() {
@@ -72,7 +73,15 @@ pub fn handle_interrupt() {
                 }
             }
         }
-        _ => {}
+        InterruptType::ModemStatus => {
+            let ms = uart.read_msr();
+            let ls = uart.read_lsr();
+            let ie = uart.read_ier();
+            trace!("MSR: {:#x}, LSR: {:#x}, IER: {:#x}", ms, ls, ie);
+        }
+        _ => {
+            warn!("[UART] {:?} not supported!", int_type);
+        }
     }
 }
 

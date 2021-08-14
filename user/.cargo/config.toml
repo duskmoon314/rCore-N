@@ -1,5 +1,6 @@
 [build]
 target = "riscv64imac-unknown-none-elf"
+incremental = false
 
 [target.riscv64gc-unknown-none-elf]
 rustflags = ["-Clink-args=-Tsrc/linker.ld"]

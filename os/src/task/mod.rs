@@ -6,11 +6,10 @@ mod processor;
 mod switch;
 mod task;
 
-use crate::{loader::get_app_data_by_name, task::task::TaskControlBlockInner};
+use crate::loader::get_app_data_by_name;
 use alloc::sync::Arc;
 use lazy_static::*;
 
-use spin::MutexGuard;
 use switch::__switch;
 use task::{TaskControlBlock, TaskStatus};
 
@@ -24,7 +23,6 @@ pub use processor::{
 
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
-
     let task = current_task().unwrap();
     let task_inner = task.acquire_inner_lock();
     let task_cx_ptr2 = task_inner.get_task_cx_ptr2();

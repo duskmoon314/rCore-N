@@ -51,7 +51,9 @@ impl UserTrapInfo {
         for (device_id, is_enabled) in &self.devices {
             Plic::disable(get_context(hart_id(), 'S'), *device_id);
             if *is_enabled {
-                Plic::enable(2, *device_id);
+                Plic::enable(get_context(hart_id(), 'U'), *device_id);
+            } else {
+                Plic::disable(get_context(hart_id(), 'U'), *device_id);
             }
         }
     }
@@ -60,7 +62,9 @@ impl UserTrapInfo {
         for (device_id, is_enabled) in &self.devices {
             Plic::disable(get_context(hart_id(), 'U'), *device_id);
             if *is_enabled {
-                Plic::enable(1, *device_id);
+                Plic::enable(get_context(hart_id(), 'S'), *device_id);
+            } else {
+                Plic::disable(get_context(hart_id(), 'S'), *device_id);
             }
         }
     }
@@ -92,7 +96,7 @@ pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<usize
     if let Some(tcb) = crate::task::find_task(pid) {
         let mut tcb_inner = tcb.acquire_inner_lock();
         if !tcb_inner.is_user_trap_enabled() {
-            warn!("[push trap record] User trap disabled!");
+            // warn!("[push trap record] User trap disabled!");
             return Err(UserTrapError::TrapDisabled);
         }
         if let Some(trap_info) = &mut tcb_inner.user_trap_info {
