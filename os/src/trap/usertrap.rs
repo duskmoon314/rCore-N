@@ -1,5 +1,6 @@
 const MAX_USER_TRAP_NUM: usize = 128;
 
+use crate::config::CPU_NUM;
 use crate::plic::Plic;
 use crate::task::hart_id;
 use crate::{mm::PhysPageNum, plic::get_context};
@@ -49,7 +50,9 @@ impl UserTrapInfo {
 
     pub fn enable_user_ext_int(&self) {
         for (device_id, is_enabled) in &self.devices {
-            Plic::disable(get_context(hart_id(), 'S'), *device_id);
+            for hart_id in 0..CPU_NUM {
+                Plic::disable(get_context(hart_id, 'S'), *device_id);
+            }
             if *is_enabled {
                 Plic::enable(get_context(hart_id(), 'U'), *device_id);
             } else {
@@ -71,12 +74,14 @@ impl UserTrapInfo {
 
     pub fn remove_user_ext_int_map(&self) {
         let mut int_map = USER_EXT_INT_MAP.lock();
-        for (device_id, _) in &self.devices {
-            Plic::claim(2);
-            Plic::complete(2, *device_id);
-            Plic::disable(2, *device_id);
-            Plic::enable(1, *device_id);
-            int_map.remove(device_id);
+        for hart_id in 0..CPU_NUM {
+            for (device_id, _) in &self.devices {
+                Plic::claim(get_context(hart_id, 'U'));
+                Plic::complete(get_context(hart_id, 'U'), *device_id);
+                Plic::disable(get_context(hart_id, 'U'), *device_id);
+                Plic::disable(get_context(hart_id, 'S'), *device_id);
+                int_map.remove(device_id);
+            }
         }
     }
 }

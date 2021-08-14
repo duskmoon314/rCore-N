@@ -65,7 +65,7 @@ pub fn main() -> i32 {
             uie::set_usoft();
             uie::set_utimer();
         }
-        // yield_();
+        yield_();
     }
 }
 
