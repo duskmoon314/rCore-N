@@ -1,7 +1,7 @@
 use crate::config::{KERNEL_STACK_SIZE, PAGE_SIZE, TRAMPOLINE};
 use crate::mm::{MapPermission, VirtAddr, KERNEL_SPACE};
 use alloc::collections::BTreeMap;
-use alloc::sync::Arc;
+use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use lazy_static::*;
 use spin::Mutex;
@@ -11,7 +11,7 @@ use super::task::TaskControlBlock;
 struct PidAllocator {
     current: usize,
     recycled: Vec<usize>,
-    task_table: BTreeMap<usize, Arc<TaskControlBlock>>,
+    task_table: BTreeMap<usize, Weak<TaskControlBlock>>,
 }
 
 impl PidAllocator {
@@ -33,7 +33,7 @@ impl PidAllocator {
         PidHandle(pid)
     }
     pub fn add_task(&mut self, pid: usize, task: Arc<TaskControlBlock>) -> Result<(), usize> {
-        match self.task_table.try_insert(pid, task) {
+        match self.task_table.try_insert(pid, Arc::downgrade(&task)) {
             Ok(_) => Ok(()),
             Err(err) => Err(*err.entry.key()),
         }
@@ -83,7 +83,11 @@ pub fn add_task_2_map(pid: usize, task: Arc<TaskControlBlock>) {
 }
 
 pub fn find_task(pid: usize) -> Option<Arc<TaskControlBlock>> {
-    PID_ALLOCATOR.lock().task_table.get(&pid).cloned()
+    PID_ALLOCATOR
+        .lock()
+        .task_table
+        .get(&pid)
+        .and_then(|weak| weak.upgrade())
 }
 
 /// Return (bottom, top) of a kernel stack in kernel space.
