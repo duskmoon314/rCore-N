@@ -15,9 +15,7 @@ riscv = { git = "https://github.com/duskmoon314/riscv", branch = "extN", feature
 spin = "0.7.0"
 rv-plic = { git = "https://github.com/duskmoon314/rv-plic" }
 uart8250 = { version = "*", features = ["fmt"], optional = true }
-uart_xilinx = { git = "https://github.com/duskmoon314/uart-rs", optional = true, features = [
-    "fmt",
-] }
+uart_xilinx = { version = "*", features = ["fmt"], optional = true }
 
 [features]
 board_qemu = ["uart8250"]
