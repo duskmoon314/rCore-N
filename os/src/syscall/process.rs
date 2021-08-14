@@ -6,7 +6,7 @@ use crate::mm;
 use crate::plic::{get_context, Plic};
 use crate::task::{
     add_task, current_task, current_user_token, exit_current_and_run_next, hart_id, mmap, munmap,
-    set_current_priority, suspend_current_and_run_next,
+    set_current_priority, suspend_current_and_run_next, WAIT_LOCK,
 };
 use crate::trap::{push_trap_record, UserTrapRecord};
 
@@ -95,6 +95,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     let task = current_task().unwrap();
     // find a child process
 
+    let _ = WAIT_LOCK.lock();
     // ---- hold current PCB lock
     let mut inner = task.acquire_inner_lock();
     if inner

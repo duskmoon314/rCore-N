@@ -10,6 +10,7 @@ use crate::loader::get_app_data_by_name;
 use alloc::sync::Arc;
 use lazy_static::*;
 
+use spin::Mutex;
 use switch::__switch;
 use task::{TaskControlBlock, TaskStatus};
 
@@ -20,6 +21,10 @@ pub use processor::{
     current_task, current_trap_cx, current_user_token, hart_id, mmap, munmap, run_tasks, schedule,
     set_current_priority, take_current_task,
 };
+
+lazy_static! {
+    pub static ref WAIT_LOCK: Mutex<()> = Mutex::new(());
+}
 
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
@@ -37,6 +42,7 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     let task = take_current_task().unwrap();
     debug!("pid: {} exited with code {}", task.pid.0, exit_code);
     // **** hold current PCB lock
+    let wl = WAIT_LOCK.lock();
     let mut inner = task.acquire_inner_lock();
     if let Some(trap_info) = &inner.user_trap_info {
         trap_info.remove_user_ext_int_map();
@@ -71,6 +77,7 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     // **** release current PCB lock
     // drop task manually to maintain rc correctly
     drop(task);
+    drop(wl);
     // we do not have to save task context
     let _unused: usize = 0;
     schedule(&_unused as *const _);
