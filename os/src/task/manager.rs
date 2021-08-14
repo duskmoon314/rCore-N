@@ -1,5 +1,3 @@
-use core::borrow::Borrow;
-
 use super::{current_task, TaskControlBlock};
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;

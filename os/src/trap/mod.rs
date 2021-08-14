@@ -62,7 +62,7 @@ pub fn trap_handler() -> ! {
             let result = syscall(cx.x[17], [cx.x[10], cx.x[11], cx.x[12]]);
             // cx is changed during sys_exec, so we have to call it again
             // cx = current_trap_cx();
-            if id != 221 {
+            if id != 221 || result != 0 {
                 cx.x[10] = result as usize;
             }
         }

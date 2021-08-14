@@ -114,7 +114,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     if let Some((idx, _)) = pair {
         let child = inner.children.remove(idx);
         // confirm that child will be deallocated after removing from children list
-        assert_eq!(Arc::strong_count(&child), 2);
+        assert_eq!(Arc::strong_count(&child), 1);
         let found_pid = child.getpid();
         // ++++ temporarily hold child lock
         let exit_code = child.acquire_inner_lock().exit_code;
