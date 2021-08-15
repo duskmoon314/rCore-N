@@ -91,11 +91,12 @@ pub fn trap_handler() -> ! {
             let mut timer_map = TIMER_MAP.lock();
             while let Some((_, pid)) = timer_map.pop_first() {
                 if let Some((next_time, _)) = timer_map.first_key_value() {
-                    if *next_time < current_time {
-                        continue;
-                    } else {
-                        set_timer(*next_time);
-                    }
+                    // if *next_time < current_time {
+                    //     continue;
+                    // } else {
+                    //     set_timer(*next_time);
+                    // }
+                    set_timer(*next_time);
                 }
                 drop(timer_map);
                 if pid == 0 {
