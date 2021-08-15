@@ -7,9 +7,7 @@ extern crate user_lib;
 extern crate alloc;
 
 use core::sync::atomic::{AtomicIsize, Ordering};
-use lazy_static::*;
 use riscv::register::uie;
-use spin::Mutex;
 use user_lib::{
     exit, get_time, init_user_trap, send_msg, set_timer, spawn, yield_, UserTrapContext,
     UserTrapRecord,

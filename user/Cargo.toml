@@ -19,6 +19,8 @@ uart_xilinx = { version = "*", features = ["fmt"], optional = true }
 embedded-hal = "1.0.0-alpha.4"
 nb = "1.0.0"
 array-init = "2.0.0"
+rand_xorshift = "0.3.0"
+rand_core = "0.6.3"
 
 [features]
 board_qemu = ["uart8250"]

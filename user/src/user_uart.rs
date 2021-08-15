@@ -2,8 +2,8 @@ use alloc::collections::VecDeque;
 use core::convert::Infallible;
 use embedded_hal::serial::{Read, Write};
 
-pub const DEFAULT_TX_BUFFER_SIZE: usize = 1_000;
-pub const DEFAULT_RX_BUFFER_SIZE: usize = 1_000;
+pub const DEFAULT_TX_BUFFER_SIZE: usize = 100;
+pub const DEFAULT_RX_BUFFER_SIZE: usize = 100;
 
 #[cfg(feature = "board_qemu")]
 mod serial_config {

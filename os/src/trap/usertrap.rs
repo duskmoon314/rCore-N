@@ -41,6 +41,7 @@ impl UserTrapInfo {
             let tail_ptr = head_ptr.add(self.user_trap_record_num);
             tail_ptr.write(trap_record);
             self.user_trap_record_num += 1;
+            trace!("[push trap record] Succeeded");
             Ok(self.user_trap_record_num)
         } else {
             warn!("[push trap record] User trap buffer overflow");
@@ -105,11 +106,9 @@ lazy_static! {
 }
 
 pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<usize, UserTrapError> {
-    trace!(
+    debug!(
         "[push trap record] pid: {}, cause: {}, message: {}",
-        pid,
-        trap_record.cause,
-        trap_record.message
+        pid, trap_record.cause, trap_record.message
     );
     if let Some(tcb) = crate::task::find_task(pid) {
         let mut tcb_inner = tcb.acquire_inner_lock();
