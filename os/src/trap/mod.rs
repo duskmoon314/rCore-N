@@ -9,7 +9,7 @@ use crate::task::{
     current_task, current_trap_cx, current_user_token, exit_current_and_run_next, hart_id,
     suspend_current_and_run_next,
 };
-use crate::timer::{set_next_trigger, TIMER_MAP};
+use crate::timer::{get_time_us, set_next_trigger, TIMER_MAP};
 use riscv::asm::ebreak;
 use riscv::register::{
     mtvec::TrapMode,
@@ -111,7 +111,7 @@ pub fn trap_handler() -> ! {
                         pid,
                         UserTrapRecord {
                             cause: 4,
-                            message: current_time,
+                            message: get_time_us(),
                         },
                     );
                 }

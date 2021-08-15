@@ -6,6 +6,7 @@
 extern crate user_lib;
 extern crate alloc;
 
+use core::sync::atomic::{AtomicIsize, Ordering};
 use lazy_static::*;
 use riscv::register::uie;
 use spin::Mutex;
@@ -14,16 +15,14 @@ use user_lib::{
     UserTrapRecord,
 };
 
-lazy_static! {
-    static ref PID: Mutex<isize> = Mutex::new(0);
-}
+static PID: AtomicIsize = AtomicIsize::new(0);
 
 #[no_mangle]
 pub fn main() -> i32 {
     println!("user trap demo");
     let pid = spawn("uart_ext\0");
     if pid > 0 {
-        *PID.lock() = pid;
+        PID.store(pid, Ordering::SeqCst);
         init_user_trap();
         let time_us = get_time() * 1000;
         for i in 1..=10 {
@@ -98,19 +97,15 @@ pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
 }
 
 fn handle_timer_interrupt() {
-    lazy_static! {
-        static ref TRAP_COUNT: Mutex<usize> = Mutex::new(0);
-    }
-    let mut trap_count = TRAP_COUNT.lock();
-    if *trap_count == 9 {
+    static TRAP_COUNT: AtomicIsize = AtomicIsize::new(0);
+    let prev_trap_count = TRAP_COUNT.fetch_add(1, Ordering::SeqCst);
+    if prev_trap_count == 9 {
         println!("[user trap demo] sending SIGTERM");
-        send_msg(*PID.lock() as usize, 15);
-        drop(trap_count);
+        send_msg(PID.load(Ordering::SeqCst) as usize, 15);
         exit(0);
     } else {
-        *trap_count += 1;
-        let msg = 0xdeadbeef00 + *trap_count as usize;
+        let msg = 0xdeadbeef00 + prev_trap_count as usize + 1;
         println!("[user trap demo] sending msg: {:x?}", msg);
-        send_msg(*PID.lock() as usize, msg);
+        send_msg(PID.load(Ordering::SeqCst) as usize, msg);
     }
 }

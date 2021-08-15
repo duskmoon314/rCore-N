@@ -217,22 +217,32 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
                     }
                 }
             }
+            use crate::uart;
             match device_id {
                 #[cfg(feature = "board_qemu")]
-                10 => match inner.memory_set.mmio_map(0x1000_0000, 0x1000_0200, 0x3) {
-                    Ok(_) => 0x1000_0000,
-                    Err(_) => -2,
-                },
-                #[cfg(feature = "board_qemu")]
-                9 => match inner.memory_set.mmio_map(0x1000_0000, 0x1000_0200, 0x3) {
-                    Ok(_) => 0x1000_0000,
-                    Err(_) => -3,
-                },
+                13 | 14 | 15 => {
+                    let base_address = uart::get_base_addr_from_irq(device_id);
+                    match inner.memory_set.mmio_map(
+                        base_address,
+                        base_address + uart::SERIAL_ADDRESS_STRIDE,
+                        0x3,
+                    ) {
+                        Ok(_) => base_address as isize,
+                        Err(_) => -2,
+                    }
+                }
                 #[cfg(feature = "board_lrv")]
-                5 => match inner.memory_set.mmio_map(0x6000_2000, 0x6000_2FFF, 0x3) {
-                    Ok(_) => 0x6000_2000,
-                    Err(_) => -3,
-                },
+                5 | 6 | 7 => {
+                    let base_address = uart::get_base_addr_from_irq(device_id);
+                    match inner.memory_set.mmio_map(
+                        base_address,
+                        base_address + uart::SERIAL_ADDRESS_STRIDE,
+                        0x3,
+                    ) {
+                        Ok(_) => base_address as isize,
+                        Err(_) => -2,
+                    }
+                }
                 _ => -4,
             }
         }

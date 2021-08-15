@@ -1,16 +1,13 @@
 use alloc::collections::VecDeque;
-use alloc::sync::Arc;
 use core::convert::Infallible;
 use embedded_hal::serial::{Read, Write};
-use lazy_static::*;
-use spin::Mutex;
 
 pub const DEFAULT_TX_BUFFER_SIZE: usize = 1_000;
 pub const DEFAULT_RX_BUFFER_SIZE: usize = 1_000;
 
 #[cfg(feature = "board_qemu")]
 mod serial_config {
-    pub use uart8250::{InterruptType, MmioUart8250};
+    pub use uart8250::{uart::LSR, InterruptType, MmioUart8250};
     pub type SerialHardware = MmioUart8250<'static>;
     pub const FIFO_DEPTH: usize = 16;
     pub const SERIAL_NUM: usize = 4;
@@ -29,7 +26,7 @@ mod serial_config {
 
 #[cfg(feature = "board_lrv")]
 mod serial_config {
-    pub use uart_xilinx::uart_16550::{InterruptType, MmioUartAxi16550};
+    pub use uart_xilinx::uart_16550::{uart::LSR, InterruptType, MmioUartAxi16550};
     pub type SerialHardware = MmioUartAxi16550<'static>;
     pub const FIFO_DEPTH: usize = 16;
     pub const SERIAL_NUM: usize = 4;
@@ -46,11 +43,12 @@ mod serial_config {
     }
 }
 
-pub use serial_config::*;
-
 pub fn get_base_addr_from_irq(irq: u16) -> usize {
     SERIAL_BASE_ADDRESS + irq_to_serial_id(irq) * SERIAL_ADDRESS_STRIDE
 }
+
+pub use serial_config::*;
+
 pub struct BufferedSerial {
     pub hardware: SerialHardware,
     pub rx_buffer: VecDeque<u8>,
@@ -89,14 +87,14 @@ impl BufferedSerial {
             self.intr_count += 1;
             match int_type {
                 InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
-                    trace!("Received data available");
+                    // println!("[SERIAL] Received data available");
                     while let Some(ch) = hardware.read_byte() {
                         self.rx_buffer.push_back(ch);
                         self.rx_count += 1;
                     }
                 }
                 InterruptType::TransmitterHoldingRegisterEmpty => {
-                    trace!("TransmitterHoldingRegisterEmpty");
+                    // println!("[SERIAL] Transmitter Holding Register Empty");
                     for _ in 0..FIFO_DEPTH {
                         if let Some(ch) = self.tx_buffer.pop_front() {
                             hardware.write_byte(ch);
@@ -108,15 +106,15 @@ impl BufferedSerial {
                     }
                 }
                 InterruptType::ModemStatus => {
-                    trace!(
-                        "MSR: {:#x}, LSR: {:#x}, IER: {:#x}",
+                    println!(
+                        "[USER SERIAL] MSR: {:#x}, LSR: {:#x}, IER: {:#x}",
                         hardware.read_msr(),
                         hardware.read_lsr(),
                         hardware.read_ier()
                     );
                 }
                 _ => {
-                    warn!("[SERIAL] {:?} not supported!", int_type);
+                    println!("[USER SERIAL] {:?} not supported!", int_type);
                 }
             }
         }
@@ -168,65 +166,68 @@ impl Read<u8> for BufferedSerial {
     }
 }
 
-#[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
-lazy_static! {
-    pub static ref BUFFERED_SERIAL: [Arc<Mutex<BufferedSerial>>; SERIAL_NUM] =
-        array_init::array_init(|i| Arc::new(Mutex::new(BufferedSerial::new(
-            SERIAL_BASE_ADDRESS + i * SERIAL_ADDRESS_STRIDE,
-        ))));
+pub struct PollingSerial {
+    pub hardware: SerialHardware,
+    pub rx_count: usize,
+    pub tx_count: usize,
+    pub tx_fifo_count: usize,
 }
 
-#[cfg(feature = "board_lrv_seriallite")]
-use serial_xilinx::MmioSerialAxiLite;
-
-#[cfg(feature = "board_lrv_seriallite")]
-lazy_static! {
-    pub static ref SERIAL: Arc<Mutex<MmioSerialAxiLite<'static>>> =
-        Arc::new(Mutex::new(MmioSerialAxiLite::new(0x6000_1000)));
-}
-
-#[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
-pub fn init() {
-    for serial_id in 0..SERIAL_NUM {
-        BUFFERED_SERIAL[serial_id].lock().hardware_init();
-    }
-}
-
-#[cfg(feature = "board_lrv_seriallite")]
-pub fn init() {
-    SERIAL.lock().enable_interrupt();
-}
-
-pub fn handle_interrupt(irq: u16) {
-    BUFFERED_SERIAL[irq_to_serial_id(irq)]
-        .lock()
-        .interrupt_handler();
-}
-
-#[cfg(feature = "board_lrv_seriallite")]
-pub fn handle_interrupt() {
-    todo!("Stdio Refactored!");
-    use serial_xilinx::serial_lite::Status;
-    let serial = SERIAL.lock();
-    let status = serial.status();
-    if status.contains(Status::TX_FIFO_EMPTY) {
-        let mut stdout = OUT_BUFFER.lock();
-        while !serial.is_tx_fifo_full() {
-            if let Some(ch) = stdout.pop_front() {
-                serial.write_byte(ch);
-            } else {
-                break;
-            }
+impl PollingSerial {
+    pub fn new(base_address: usize) -> Self {
+        PollingSerial {
+            hardware: SerialHardware::new(base_address),
+            rx_count: 0,
+            tx_count: 0,
+            tx_fifo_count: 0,
         }
     }
-    if status.contains(Status::RX_FIFO_FULL) {
-        let mut stdin = IN_BUFFER.lock();
-        for _ in 0..FIFO_DEPTH {
-            if let Some(ch) = serial.read_byte() {
-                stdin.push_back(ch);
-            } else {
-                break;
+
+    pub fn hardware_init(&mut self) {
+        let hardware = &mut self.hardware;
+        hardware.write_ier(0);
+        let _ = hardware.read_msr();
+        let _ = hardware.read_lsr();
+        hardware.init(100_000_000, 115200);
+        hardware.write_ier(0);
+        // Rx FIFO trigger level=14, reset Rx & Tx FIFO, enable FIFO
+        hardware.write_fcr(0b11_000_11_1);
+    }
+
+    pub fn interrupt_handler(&mut self) {}
+}
+
+impl Write<u8> for PollingSerial {
+    type Error = Infallible;
+
+    #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+    fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
+        let serial = &mut self.hardware;
+        while self.tx_fifo_count >= FIFO_DEPTH {
+            if serial.lsr().contains(LSR::THRE) {
+                self.tx_fifo_count = 0;
             }
+        }
+        serial.write_byte(word);
+        self.tx_count += 1;
+        self.tx_fifo_count += 1;
+        Ok(())
+    }
+
+    fn try_flush(&mut self) -> nb::Result<(), Self::Error> {
+        todo!()
+    }
+}
+
+impl Read<u8> for PollingSerial {
+    type Error = Infallible;
+
+    #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+    fn try_read(&mut self) -> nb::Result<u8, Self::Error> {
+        if let Some(ch) = self.hardware.read_byte() {
+            Ok(ch)
+        } else {
+            Err(nb::Error::WouldBlock)
         }
     }
 }

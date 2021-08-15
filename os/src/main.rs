@@ -22,7 +22,6 @@ use crate::{config::CPU_NUM, mm::init_kernel_space, sbi::send_ipi};
 mod console;
 mod config;
 #[macro_use]
-mod console_blog;
 mod fs;
 mod lang_items;
 mod loader;

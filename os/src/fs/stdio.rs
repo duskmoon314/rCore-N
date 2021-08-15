@@ -1,7 +1,20 @@
 use super::File;
-use crate::console_blog::pop_stdin;
 use crate::mm::UserBuffer;
 use crate::print;
+use crate::uart;
+use core::fmt::{self, Write};
+
+#[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+pub fn stdio_putchar(c: u8) {
+    use embedded_hal::serial::Write;
+    let _ = uart::BUFFERED_SERIAL[0].lock().try_write(c);
+}
+
+#[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+pub fn stdio_getchar() -> u8 {
+    use embedded_hal::serial::Read;
+    uart::BUFFERED_SERIAL[0].lock().try_read().unwrap_or(0)
+}
 
 pub struct Stdin;
 
@@ -11,10 +24,7 @@ impl File for Stdin {
     fn read(&self, mut user_buf: UserBuffer) -> Result<usize, isize> {
         assert_eq!(user_buf.len(), 1);
         // busy loop
-        let c = pop_stdin();
-        // c = console_getchar();
-
-        let ch = c as u8;
+        let ch = stdio_getchar();
         unsafe {
             user_buf.buffers[0].as_mut_ptr().write_volatile(ch);
         }
@@ -34,5 +44,33 @@ impl File for Stdout {
             print!("{}", core::str::from_utf8(*buffer).unwrap());
         }
         Ok(user_buf.len())
+    }
+}
+
+impl Write for Stdout {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        for c in s.chars() {
+            stdio_putchar(c as u8);
+        }
+        Ok(())
+    }
+}
+
+#[allow(dead_code)]
+pub fn print(args: fmt::Arguments) {
+    Stdout.write_fmt(args).unwrap();
+}
+
+#[macro_export]
+macro_rules! print {
+    ($fmt: literal $(, $($arg: tt)+)?) => {
+        $crate::fs::stdio::print(format_args!($fmt $(, $($arg)+)?));
+    }
+}
+
+#[macro_export]
+macro_rules! println {
+    ($fmt: literal $(, $($arg: tt)+)?) => {
+        $crate::fs::stdio::print(format_args!(concat!($fmt, "\r\n") $(, $($arg)+)?));
     }
 }

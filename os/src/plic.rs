@@ -23,8 +23,8 @@ pub fn get_context(hart_id: usize, mode: char) -> usize {
 
 #[cfg(feature = "board_qemu")]
 pub fn init() {
-    Plic::set_priority(9, Priority::lowest());
     Plic::set_priority(12, Priority::lowest());
+    Plic::set_priority(13, Priority::lowest());
 }
 
 #[cfg(feature = "board_lrv")]
@@ -72,13 +72,13 @@ pub fn handle_external_interrupt(hart_id: usize) {
         if !can_user_handle {
             match irq {
                 #[cfg(feature = "board_qemu")]
-                12 => {
-                    uart::handle_interrupt();
-                    trace!("[PLIC] irq {:?} handled by kenel, UART2", irq);
+                12 | 13 | 14 | 15 => {
+                    uart::handle_interrupt(irq);
+                    debug!("[PLIC] irq {:?} handled by kenel, UART2", irq);
                 }
                 #[cfg(feature = "board_lrv")]
-                4 => {
-                    uart::handle_interrupt();
+                4 | 5 | 6 | 7 => {
+                    uart::handle_interrupt(irq);
                     trace!("[PLIC] kenel handling uart");
                 }
                 _ => {

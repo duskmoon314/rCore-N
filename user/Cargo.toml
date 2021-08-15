@@ -12,10 +12,13 @@ lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
 riscv = { git = "https://github.com/duskmoon314/riscv", branch = "extN", features = [
     "inline-asm",
 ] }
-spin = "0.7.0"
+spin = "0.9"
 rv-plic = { git = "https://github.com/duskmoon314/rv-plic" }
 uart8250 = { version = "*", features = ["fmt"], optional = true }
 uart_xilinx = { version = "*", features = ["fmt"], optional = true }
+embedded-hal = "1.0.0-alpha.4"
+nb = "1.0.0"
+array-init = "2.0.0"
 
 [features]
 board_qemu = ["uart8250"]

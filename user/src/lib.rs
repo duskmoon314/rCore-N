@@ -1,4 +1,5 @@
 #![no_std]
+#![feature(asm)]
 #![feature(llvm_asm)]
 #![feature(global_asm)]
 #![feature(linkage)]
@@ -10,6 +11,7 @@ pub mod console;
 mod lang_items;
 mod syscall;
 mod trap;
+pub mod user_uart;
 
 extern crate alloc;
 #[macro_use]
@@ -130,6 +132,15 @@ pub fn get_time() -> isize {
         _ => -1,
     }
 }
+
+pub fn get_time_us() -> isize {
+    let time = TimeVal::new();
+    match sys_get_time(&time, 0) {
+        0 => ((time.sec & 0xffff) * 1000_0000 + time.usec) as isize,
+        _ => -1,
+    }
+}
+
 pub fn getpid() -> isize {
     sys_getpid()
 }
