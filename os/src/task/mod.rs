@@ -40,9 +40,9 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next(exit_code: i32) {
     // take from Processor
     let task = take_current_task().unwrap();
-    debug!("pid: {} exited with code {}", task.pid.0, exit_code);
     // **** hold current PCB lock
     let wl = WAIT_LOCK.lock();
+    debug!("pid: {} exited with code {}", task.pid.0, exit_code);
     let mut inner = task.acquire_inner_lock();
     if let Some(trap_info) = &inner.user_trap_info {
         trap_info.remove_user_ext_int_map();
