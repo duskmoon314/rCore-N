@@ -93,7 +93,7 @@ impl UserTrapInfo {
                 Plic::claim(get_context(hart_id, 'U'));
                 Plic::complete(get_context(hart_id, 'U'), *device_id);
                 Plic::disable(get_context(hart_id, 'U'), *device_id);
-                Plic::disable(get_context(hart_id, 'S'), *device_id);
+                Plic::enable(get_context(hart_id, 'S'), *device_id);
                 int_map.remove(device_id);
             }
         }

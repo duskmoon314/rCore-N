@@ -17,7 +17,10 @@ const LF: u8 = 0x0au8;
 const CR: u8 = 0x0du8;
 const DL: u8 = 0x7fu8;
 const BS: u8 = 0x08u8;
+#[cfg(feature = "board_qemu")]
 const UART_IRQN: u16 = 13;
+#[cfg(feature = "board_lrv")]
+const UART_IRQN: u16 = 5;
 
 #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 lazy_static! {
@@ -31,7 +34,7 @@ pub fn main() -> i32 {
     println!("[uart ext] A user mode serial driver demo using UEI");
     let init_res = init_user_trap();
     let claim_res = claim_ext_int(UART_IRQN as usize);
-    SERIAL.lock().hardware_init();
+    SERIAL.lock().hardware_init(115200);
     let en_res = set_ext_int_enable(UART_IRQN as usize, 1);
     println!(
         "[uart ext] init result: {:#x}, claim result: {:#x}, enable res: {:#x}",

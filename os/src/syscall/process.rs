@@ -273,6 +273,9 @@ pub fn sys_set_ext_int_enable(device_id: usize, enable: usize) -> isize {
                             *en = is_enable;
                             if is_enable {
                                 Plic::enable(get_context(hart_id(), 'U'), device_id);
+                                for hart in 0..CPU_NUM {
+                                    Plic::disable(get_context(hart, 'S'), device_id);
+                                }
                             } else {
                                 Plic::disable(get_context(hart_id(), 'U'), device_id);
                             }

@@ -25,18 +25,25 @@ pub fn get_context(hart_id: usize, mode: char) -> usize {
 pub fn init() {
     Plic::set_priority(12, Priority::lowest());
     Plic::set_priority(13, Priority::lowest());
+    Plic::set_priority(14, Priority::lowest());
+    Plic::set_priority(15, Priority::lowest());
 }
 
 #[cfg(feature = "board_lrv")]
 pub fn init() {
     Plic::set_priority(4, Priority::lowest());
     Plic::set_priority(5, Priority::lowest());
+    Plic::set_priority(6, Priority::lowest());
+    Plic::set_priority(7, Priority::lowest());
 }
 
 #[cfg(feature = "board_qemu")]
 pub fn init_hart(hart_id: usize) {
     let context = get_context(hart_id, 'S');
     Plic::enable(context, 12);
+    Plic::enable(context, 13);
+    Plic::enable(context, 14);
+    Plic::enable(context, 15);
     Plic::set_threshold(context, Priority::any());
 }
 
@@ -44,7 +51,9 @@ pub fn init_hart(hart_id: usize) {
 pub fn init_hart(hart_id: usize) {
     let context = get_context(hart_id, 'S');
     Plic::enable(context, 4);
-    Plic::disable(context, 5);
+    Plic::enable(context, 5);
+    Plic::enable(context, 6);
+    Plic::enable(context, 7);
     Plic::set_threshold(context, Priority::any());
 }
 
@@ -74,15 +83,15 @@ pub fn handle_external_interrupt(hart_id: usize) {
                 #[cfg(feature = "board_qemu")]
                 12 | 13 | 14 | 15 => {
                     uart::handle_interrupt(irq);
-                    debug!("[PLIC] irq {:?} handled by kenel, UART2", irq);
+                    trace!("[PLIC] irq {:?} handled by kenel", irq);
                 }
                 #[cfg(feature = "board_lrv")]
                 4 | 5 | 6 | 7 => {
                     uart::handle_interrupt(irq);
-                    trace!("[PLIC] kenel handling uart");
+                    trace!("[PLIC] irq {:?} handled by kenel", irq);
                 }
                 _ => {
-                    debug!("[PLIC]: irq {:?} not supported!", irq);
+                    warn!("[PLIC]: irq {:?} not supported!", irq);
                 }
             }
         }

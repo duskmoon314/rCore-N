@@ -70,12 +70,12 @@ impl BufferedSerial {
         }
     }
 
-    pub fn hardware_init(&mut self) {
+    pub fn hardware_init(&mut self, baud_rate: usize) {
         let hardware = &mut self.hardware;
         hardware.write_ier(0);
         let _ = hardware.read_msr();
         let _ = hardware.read_lsr();
-        hardware.init(100_000_000, 115200);
+        hardware.init(100_000_000, baud_rate);
         // Rx FIFO trigger level=14, reset Rx & Tx FIFO, enable FIFO
         hardware.write_fcr(0b11_000_11_1);
     }
@@ -183,12 +183,12 @@ impl PollingSerial {
         }
     }
 
-    pub fn hardware_init(&mut self) {
+    pub fn hardware_init(&mut self, baud_rate: usize) {
         let hardware = &mut self.hardware;
         hardware.write_ier(0);
         let _ = hardware.read_msr();
         let _ = hardware.read_lsr();
-        hardware.init(100_000_000, 115200);
+        hardware.init(100_000_000, baud_rate);
         hardware.write_ier(0);
         // Rx FIFO trigger level=14, reset Rx & Tx FIFO, enable FIFO
         hardware.write_fcr(0b11_000_11_1);
@@ -225,6 +225,7 @@ impl Read<u8> for PollingSerial {
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     fn try_read(&mut self) -> nb::Result<u8, Self::Error> {
         if let Some(ch) = self.hardware.read_byte() {
+            self.rx_count += 1;
             Ok(ch)
         } else {
             Err(nb::Error::WouldBlock)

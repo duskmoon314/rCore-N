@@ -55,12 +55,15 @@ lazy_static! {
     pub static ref TIMER_MAP: [Arc<Mutex<BTreeMap<usize, usize>>>; CPU_NUM] = Default::default();
 }
 
-pub fn set_virtual_timer(time: usize, pid: usize) {
+pub fn set_virtual_timer(mut time: usize, pid: usize) {
     if time < time::read() {
-        warn!("Time travel unallowed!");
-        return;
+        warn!("Time travel!");
+        // return;
     }
     let mut timer_map = TIMER_MAP[hart_id()].lock();
+    while timer_map.contains_key(&time) {
+        time += 1;
+    }
     timer_map.insert(time, pid);
     if let Some((timer_min, _)) = timer_map.first_key_value() {
         if time == *timer_min {

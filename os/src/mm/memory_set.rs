@@ -156,21 +156,11 @@ impl MemorySet {
         );
         debug!("mapping uart");
         use crate::uart;
-        #[cfg(feature = "board_qemu")]
+        #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
         memory_set.push(
             MapArea::new(
                 (uart::SERIAL_BASE_ADDRESS).into(),
                 (uart::SERIAL_BASE_ADDRESS + uart::SERIAL_NUM * uart::SERIAL_ADDRESS_STRIDE).into(),
-                MapType::Mmio,
-                MapPermission::R | MapPermission::W,
-            ),
-            None,
-        );
-        #[cfg(feature = "board_lrv")]
-        memory_set.push(
-            MapArea::new(
-                (0x6000_0000_usize).into(),
-                (0x6000_4000_usize).into(),
                 MapType::Mmio,
                 MapPermission::R | MapPermission::W,
             ),

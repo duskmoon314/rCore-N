@@ -6,7 +6,7 @@
 extern crate user_lib;
 extern crate alloc;
 
-use user_lib::{send_msg, sleep, spawn, waitpid};
+use user_lib::{sleep, spawn, waitpid};
 
 #[no_mangle]
 pub fn main() -> i32 {
