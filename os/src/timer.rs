@@ -1,5 +1,6 @@
-use crate::config::CLOCK_FREQ;
+use crate::config::{CLOCK_FREQ, CPU_NUM};
 use crate::sbi::set_timer;
+use crate::task::hart_id;
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use lazy_static::*;
 use riscv::register::time;
@@ -51,8 +52,7 @@ pub fn set_next_trigger() {
 }
 
 lazy_static! {
-    pub static ref TIMER_MAP: Arc<Mutex<BTreeMap<usize, usize>>> =
-        Arc::new(Mutex::new(BTreeMap::new()));
+    pub static ref TIMER_MAP: [Arc<Mutex<BTreeMap<usize, usize>>>; CPU_NUM] = Default::default();
 }
 
 pub fn set_virtual_timer(time: usize, pid: usize) {
@@ -60,7 +60,7 @@ pub fn set_virtual_timer(time: usize, pid: usize) {
         warn!("Time travel unallowed!");
         return;
     }
-    let mut timer_map = TIMER_MAP.lock();
+    let mut timer_map = TIMER_MAP[hart_id()].lock();
     timer_map.insert(time, pid);
     if let Some((timer_min, _)) = timer_map.first_key_value() {
         if time == *timer_min {
