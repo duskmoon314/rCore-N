@@ -79,8 +79,6 @@ pub fn handle_external_interrupt(hart_id: usize) {
                 can_user_handle = true;
             }
             // prioritize_task(*pid);
-            Plic::complete(context, irq);
-            Plic::disable(context, irq);
         }
         if !can_user_handle {
             match irq {
@@ -98,7 +96,7 @@ pub fn handle_external_interrupt(hart_id: usize) {
                     warn!("[PLIC]: irq {:?} not supported!", irq);
                 }
             }
+            Plic::complete(context, irq);
         }
-        Plic::complete(context, irq);
     }
 }

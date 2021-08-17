@@ -41,7 +41,7 @@ impl UserTrapInfo {
             let tail_ptr = head_ptr.add(self.user_trap_record_num);
             tail_ptr.write(trap_record);
             self.user_trap_record_num += 1;
-            trace!("[push trap record] Succeeded");
+            // trace!("[push trap record] Succeeded");
             Ok(self.user_trap_record_num)
         } else {
             warn!("[push trap record] User trap buffer overflow");
@@ -61,12 +61,21 @@ impl UserTrapInfo {
                 Plic::disable(u_context, *device_id);
             }
         }
-        // debug!(
-        //     "ena, S: {:#x}, U: {:#x}, 5 pending: {}",
-        //     Plic::get_enable(get_context(hart_id(), 'S'), 0),
-        //     Plic::get_enable(u_context, 0),
-        //     Plic::is_pending(5)
-        // );
+        unsafe {
+            asm!("fence iorw,iorw");
+        }
+        // static mut CNT: u8 = 0;
+        // unsafe {
+        //     CNT += 1;
+        //     if CNT > 200 {
+        //         debug!(
+        //             "ena, S: {:#x}, U: {:#x}",
+        //             Plic::get_enable(get_context(hart_id(), 'S'), 0),
+        //             Plic::get_enable(u_context, 0),
+        //         );
+        //         CNT = 0;
+        //     }
+        // }
     }
 
     pub fn disable_user_ext_int(&self) {
@@ -79,11 +88,21 @@ impl UserTrapInfo {
                 Plic::disable(get_context(hart_id, 'S'), *device_id);
             }
         }
-        // debug!(
-        //     "dis, S: {:#x}, U: {:#x}",
-        //     Plic::get_enable(get_context(hart_id, 'S'), 0),
-        //     Plic::get_enable(get_context(hart_id, 'U'), 0)
-        // );
+        unsafe {
+            asm!("fence iorw,iorw");
+        }
+        // static mut CNT: u8 = 0;
+        // unsafe {
+        //     CNT += 1;
+        //     if CNT > 200 {
+        //         trace!(
+        //             "dis, S: {:#x}, U: {:#x}",
+        //             Plic::get_enable(get_context(hart_id, 'S'), 0),
+        //             Plic::get_enable(get_context(hart_id, 'U'), 0),
+        //         );
+        //         CNT = 0;
+        //     }
+        // }
     }
 
     pub fn remove_user_ext_int_map(&self) {
@@ -106,10 +125,10 @@ lazy_static! {
 }
 
 pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<usize, UserTrapError> {
-    debug!(
-        "[push trap record] pid: {}, cause: {}, message: {}",
-        pid, trap_record.cause, trap_record.message
-    );
+    // debug!(
+    //     "[push trap record] pid: {}, cause: {}, message: {}",
+    //     pid, trap_record.cause, trap_record.message
+    // );
     if let Some(tcb) = crate::task::find_task(pid) {
         let mut tcb_inner = tcb.acquire_inner_lock();
         if !tcb_inner.is_user_trap_enabled() {

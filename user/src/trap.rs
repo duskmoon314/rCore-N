@@ -68,6 +68,7 @@ pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
                     } else if ucause::Interrupt::from(cause) == ucause::Interrupt::UserExternal {
                         let irq = trap_record.message as u16;
                         ext_intr_handler(irq, true);
+                        Plic::complete(get_context(hart_id(), 'U'), irq);
                     } else if ucause::Interrupt::from(cause) == ucause::Interrupt::UserTimer {
                         timer_intr_handler(msg);
                     }

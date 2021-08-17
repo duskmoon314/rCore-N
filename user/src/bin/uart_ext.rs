@@ -81,7 +81,7 @@ pub fn main() -> i32 {
             uie::set_usoft();
             uie::set_utimer();
         }
-        // for _ in 0..1_0000 {}
+        // for _ in 0..1000 {}
         yield_();
     }
 }

@@ -1,6 +1,7 @@
 use alloc::collections::VecDeque;
 use core::convert::Infallible;
 use embedded_hal::serial::{Read, Write};
+pub use serial_config::*;
 
 pub const DEFAULT_TX_BUFFER_SIZE: usize = 100;
 pub const DEFAULT_RX_BUFFER_SIZE: usize = 100;
@@ -47,8 +48,6 @@ pub fn get_base_addr_from_irq(irq: u16) -> usize {
     SERIAL_BASE_ADDRESS + irq_to_serial_id(irq) * SERIAL_ADDRESS_STRIDE
 }
 
-pub use serial_config::*;
-
 pub struct BufferedSerial {
     pub hardware: SerialHardware,
     pub rx_buffer: VecDeque<u8>,
@@ -56,6 +55,8 @@ pub struct BufferedSerial {
     pub rx_count: usize,
     pub tx_count: usize,
     pub intr_count: usize,
+    pub rx_intr_count: usize,
+    pub tx_intr_count: usize,
 }
 
 impl BufferedSerial {
@@ -67,6 +68,8 @@ impl BufferedSerial {
             rx_count: 0,
             tx_count: 0,
             intr_count: 0,
+            rx_intr_count: 0,
+            tx_intr_count: 0,
         }
     }
 
@@ -75,9 +78,10 @@ impl BufferedSerial {
         hardware.write_ier(0);
         let _ = hardware.read_msr();
         let _ = hardware.read_lsr();
+        hardware.write_mcr(0);
         hardware.init(100_000_000, baud_rate);
-        // Rx FIFO trigger level=14, reset Rx & Tx FIFO, enable FIFO
-        hardware.write_fcr(0b11_000_11_1);
+        // Rx FIFO trigger level=8, reset Rx & Tx FIFO, enable FIFO
+        hardware.write_fcr(0b01_000_11_1);
     }
 
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
@@ -88,13 +92,15 @@ impl BufferedSerial {
             match int_type {
                 InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
                     // println!("[SERIAL] Received data available");
+                    self.rx_intr_count += 1;
                     while let Some(ch) = hardware.read_byte() {
-                        self.rx_buffer.push_back(ch);
+                        let _ = self.rx_buffer.push_back(ch);
                         self.rx_count += 1;
                     }
                 }
                 InterruptType::TransmitterHoldingRegisterEmpty => {
                     // println!("[SERIAL] Transmitter Holding Register Empty");
+                    self.tx_intr_count += 1;
                     for _ in 0..FIFO_DEPTH {
                         if let Some(ch) = self.tx_buffer.pop_front() {
                             hardware.write_byte(ch);
@@ -127,17 +133,23 @@ impl Write<u8> for BufferedSerial {
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
         let serial = &mut self.hardware;
-        if !serial.is_transmitter_holding_register_empty_interrupt_enabled() {
-            serial.write_byte(word);
-            self.tx_count += 1;
-            serial.enable_transmitter_holding_register_empty_interrupt();
-        } else {
-            if self.tx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
-                self.tx_buffer.push_back(word);
-            } else {
-                return Err(nb::Error::WouldBlock);
+        if serial.is_transmitter_holding_register_empty() {
+            for _ in 0..FIFO_DEPTH {
+                if let Some(ch) = self.tx_buffer.pop_front() {
+                    serial.write_byte(ch);
+                    self.tx_count += 1;
+                }
             }
         }
+        if !serial.is_transmitter_holding_register_empty_interrupt_enabled() {
+            serial.enable_transmitter_holding_register_empty_interrupt();
+        }
+        if self.tx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
+            self.tx_buffer.push_back(word);
+        } else {
+            return Err(nb::Error::WouldBlock);
+        }
+
         Ok(())
     }
 
@@ -190,8 +202,8 @@ impl PollingSerial {
         let _ = hardware.read_lsr();
         hardware.init(100_000_000, baud_rate);
         hardware.write_ier(0);
-        // Rx FIFO trigger level=14, reset Rx & Tx FIFO, enable FIFO
-        hardware.write_fcr(0b11_000_11_1);
+        // Rx FIFO trigger level=4, reset Rx & Tx FIFO, enable FIFO
+        hardware.write_fcr(0b01_000_11_1);
     }
 
     pub fn interrupt_handler(&mut self) {}
