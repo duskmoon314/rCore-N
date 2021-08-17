@@ -1,6 +1,8 @@
 QEMU := "../../qemu-build/riscv64-softmmu/qemu-system-riscv64"
+SERIAL3 := "/dev/pts/29"
+SERIAL4 := "/dev/pts/29"
 # machine, user, supervisor
-SERIAL_FLAGS := "-serial /dev/pts/1 -serial /dev/pts/2 -serial /dev/pts/3"
+SERIAL_FLAGS := "-serial /dev/pts/24 -serial /dev/pts/25 -serial /dev/pts/31"
 
 TARGET := "riscv64imac-unknown-none-elf"
 MODE := "debug"
