@@ -14,7 +14,7 @@ use riscv::asm::ebreak;
 use riscv::register::{
     mtvec::TrapMode,
     scause::{self, Exception, Interrupt, Trap},
-    sepc, sideleg, sie, sip, sstatus, stval, stvec, time,
+    sepc, sideleg, sie, sip, sstatus, stval, stvec,
 };
 
 global_asm!(include_str!("trap.asm"));
@@ -101,7 +101,14 @@ pub fn trap_handler() -> ! {
                 drop(timer_map);
                 if pid == 0 {
                     set_next_trigger();
-                    trace!("kernel tick");
+                    // static mut CNT: u8 = 0;
+                    // unsafe {
+                    //     CNT += 1;
+                    //     if CNT > 200 {
+                    //         trace!("kernel tick");
+                    //         CNT = 0;
+                    //     }
+                    // }
                     suspend_current_and_run_next();
                 } else if pid == current_task().unwrap().pid.0 {
                     unsafe {
@@ -151,7 +158,7 @@ pub fn trap_return() -> ! {
         fn __restore();
     }
     let restore_va = __restore as usize - __alltraps as usize + TRAMPOLINE;
-    trace!("return to user");
+    // trace!("return to user");
     unsafe {
         sstatus::set_spie();
         sstatus::set_spp(sstatus::SPP::User);

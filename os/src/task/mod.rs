@@ -16,7 +16,7 @@ use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
 pub use pid::{find_task, pid_alloc, KernelStack, PidHandle};
-pub use pool::{add_task, fetch_task};
+pub use pool::{add_task, fetch_task, prioritize_task};
 pub use processor::{
     current_task, current_trap_cx, current_user_token, hart_id, mmap, munmap, run_tasks, schedule,
     set_current_priority, take_current_task,

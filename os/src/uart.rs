@@ -72,14 +72,14 @@ impl BufferedSerial {
         }
     }
 
-    pub fn hardware_init(&mut self) {
+    pub fn hardware_init(&mut self, baud_rate: usize) {
         let hardware = &mut self.hardware;
         hardware.write_ier(0);
         let _ = hardware.read_msr();
         let _ = hardware.read_lsr();
-        hardware.init(100_000_000, 115200);
-        // Rx FIFO trigger level=14, reset Rx & Tx FIFO, enable FIFO
-        hardware.write_fcr(0b11_000_11_1);
+        hardware.init(100_000_000, baud_rate);
+        // Rx FIFO trigger level=8, reset Rx & Tx FIFO, enable FIFO
+        hardware.write_fcr(0b10_000_11_1);
     }
 
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
@@ -89,14 +89,14 @@ impl BufferedSerial {
             self.intr_count += 1;
             match int_type {
                 InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
-                    trace!("Received data available");
+                    // trace!("Received data available");
                     while let Some(ch) = hardware.read_byte() {
                         self.rx_buffer.push_back(ch);
                         self.rx_count += 1;
                     }
                 }
                 InterruptType::TransmitterHoldingRegisterEmpty => {
-                    trace!("TransmitterHoldingRegisterEmpty");
+                    // trace!("TransmitterHoldingRegisterEmpty");
                     for _ in 0..FIFO_DEPTH {
                         if let Some(ch) = self.tx_buffer.pop_front() {
                             hardware.write_byte(ch);
@@ -187,8 +187,11 @@ lazy_static! {
 
 #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 pub fn init() {
-    for serial_id in 0..SERIAL_NUM {
-        BUFFERED_SERIAL[serial_id].lock().hardware_init();
+    for serial_id in 0..2 {
+        BUFFERED_SERIAL[serial_id].lock().hardware_init(115200);
+    }
+    for serial_id in 2..SERIAL_NUM {
+        BUFFERED_SERIAL[serial_id].lock().hardware_init(6_250_000);
     }
 }
 
@@ -229,4 +232,14 @@ pub fn handle_interrupt() {
             }
         }
     }
+}
+
+#[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+pub fn serial_putchar(serial_id: usize, c: u8) {
+    let _ = BUFFERED_SERIAL[serial_id].lock().try_write(c);
+}
+
+#[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+pub fn serial_getchar(serial_id: usize) -> u8 {
+    BUFFERED_SERIAL[serial_id].lock().try_read().unwrap_or(0)
 }

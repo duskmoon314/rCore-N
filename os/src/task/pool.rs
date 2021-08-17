@@ -42,14 +42,22 @@ impl TaskPool {
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
         self.scheduler.fetch()
     }
+
+    pub fn prioritize(&mut self, pid: usize) {
+        self.scheduler.priorityze(pid);
+    }
 }
 
 pub fn add_task(task: Arc<TaskControlBlock>) {
     let token = task.acquire_inner_lock().memory_set.token();
-    trace!("task pid: {}, satp: {:#x} added to pool", task.pid.0, token);
+    // trace!("task pid: {}, satp: {:#x} added to pool", task.pid.0, token);
     TASK_POOL.lock().add(task);
 }
 
 pub fn fetch_task() -> Option<Arc<TaskControlBlock>> {
     TASK_POOL.lock().fetch()
+}
+
+pub fn prioritize_task(pid: usize) {
+    TASK_POOL.lock().prioritize(pid);
 }

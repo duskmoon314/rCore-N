@@ -129,7 +129,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 }
 
 pub fn sys_spawn(file: *const u8) -> isize {
-    debug!("SPAWN start");
+    trace!("SPAWN start");
     let current_task = current_task().unwrap();
     match current_task.spawn(file) {
         Ok(new_task) => {
@@ -145,14 +145,14 @@ pub fn sys_spawn(file: *const u8) -> isize {
 }
 
 pub fn sys_init_user_trap() -> isize {
-    debug!("init user trap!");
+    trace!("init user trap!");
     match current_task()
         .unwrap()
         .acquire_inner_lock()
         .init_user_trap()
     {
         Ok(addr) => {
-            debug!("init ok, addr:{:?}", addr);
+            trace!("init ok, addr: {:#x}", addr);
             addr
         }
         Err(errno) => errno,

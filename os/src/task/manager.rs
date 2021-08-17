@@ -28,6 +28,29 @@ impl TaskManager {
         // May need to concern affinity
         self.ready_queue.pop_front()
     }
+
+    pub fn priorityze(&mut self, pid: usize) {
+        let q = &mut self.ready_queue;
+        if q.is_empty() || q.len() == 1 {
+            return;
+        }
+        let front_pid = q.front().unwrap().pid.0;
+        if front_pid == pid {
+            debug!("[Taskmgr] Task {} already at front", pid);
+
+            return;
+        }
+        q.rotate_left(1);
+        while {
+            let f_pid = q.front().unwrap().pid.0;
+            f_pid != pid && f_pid != front_pid
+        } {
+            q.rotate_left(1);
+        }
+        if q.front().unwrap().pid.0 == pid {
+            debug!("[Taskmgr] Prioritized task {}", pid);
+        }
+    }
 }
 
 // lazy_static! {

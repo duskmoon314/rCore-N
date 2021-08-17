@@ -1,7 +1,7 @@
-use rv_plic::{Priority, PLIC};
-
+use crate::task::prioritize_task;
 use crate::trap::{push_trap_record, UserTrapRecord, USER_EXT_INT_MAP};
 use crate::uart;
+use rv_plic::{Priority, PLIC};
 
 #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 pub const PLIC_BASE: usize = 0xc00_0000;
@@ -50,11 +50,14 @@ pub fn init_hart(hart_id: usize) {
 #[cfg(feature = "board_lrv")]
 pub fn init_hart(hart_id: usize) {
     let context = get_context(hart_id, 'S');
+    Plic::clear_enable(context, 0);
+    Plic::clear_enable(get_context(hart_id, 'U'), 0);
     Plic::enable(context, 4);
     Plic::enable(context, 5);
     Plic::enable(context, 6);
     Plic::enable(context, 7);
     Plic::set_threshold(context, Priority::any());
+    Plic::set_threshold(get_context(hart_id, 'M'), Priority::never());
 }
 
 pub fn handle_external_interrupt(hart_id: usize) {
@@ -62,7 +65,7 @@ pub fn handle_external_interrupt(hart_id: usize) {
     while let Some(irq) = Plic::claim(context) {
         let mut can_user_handle = false;
         if let Some(pid) = USER_EXT_INT_MAP.lock().get(&irq) {
-            debug!("[PLIC] irq {:?} mapped to pid {:?}", irq, pid);
+            // debug!("[PLIC] irq {:?} mapped to pid {:?}", irq, pid);
             if push_trap_record(
                 *pid,
                 UserTrapRecord {
@@ -75,6 +78,7 @@ pub fn handle_external_interrupt(hart_id: usize) {
             {
                 can_user_handle = true;
             }
+            // prioritize_task(*pid);
             Plic::complete(context, irq);
             Plic::disable(context, irq);
         }
@@ -88,7 +92,7 @@ pub fn handle_external_interrupt(hart_id: usize) {
                 #[cfg(feature = "board_lrv")]
                 4 | 5 | 6 | 7 => {
                     uart::handle_interrupt(irq);
-                    trace!("[PLIC] irq {:?} handled by kenel", irq);
+                    // trace!("[PLIC] irq {:?} handled by kenel", irq);
                 }
                 _ => {
                     warn!("[PLIC]: irq {:?} not supported!", irq);
