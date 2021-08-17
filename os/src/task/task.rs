@@ -1,6 +1,6 @@
 use super::TaskContext;
 use super::{pid_alloc, KernelStack, PidHandle};
-use crate::fs::{File, MailBox, Socket, Stdin, Stdout};
+use crate::fs::{File, MailBox, Serial, Socket, Stdin, Stdout};
 use crate::mm::{translate_writable_va, MemorySet, PhysAddr, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::task::pid::add_task_2_map;
 use crate::trap::{trap_handler, TrapContext, UserTrapInfo};
@@ -132,7 +132,7 @@ impl TaskControlBlockInner {
         if self.is_user_trap_enabled() {
             if let Some(trap_info) = &mut self.user_trap_info {
                 if trap_info.user_trap_record_num > 0 {
-                    debug!("restore user trap");
+                    trace!("restore {} user trap", trap_info.user_trap_record_num);
                     uscratch::write(trap_info.user_trap_record_num as usize);
                     trap_info.user_trap_record_num = 0;
                     unsafe {
@@ -161,7 +161,7 @@ impl TaskControlBlock {
         let kernel_stack_top = kernel_stack.get_top();
         // push a task context which goes to trap_return to the top of kernel stack
         let task_cx_ptr = kernel_stack.push_on_top(TaskContext::goto_trap_return());
-        debug!("new task cx ptr: {:#x?}", task_cx_ptr as usize);
+        trace!("new task cx ptr: {:#x?}", task_cx_ptr as usize);
         let task_control_block = Arc::new(TaskControlBlock {
             pid: pid_handle,
             kernel_stack,
@@ -183,6 +183,10 @@ impl TaskControlBlock {
                     Some(Arc::new(Stdout)),
                     // 2 -> stderr
                     Some(Arc::new(Stdout)),
+                    // 3 -> serial 3
+                    Some(Arc::new(Serial::<2>)),
+                    // 4 -> serial 4
+                    Some(Arc::new(Serial::<3>)),
                 ],
                 mail_box: Arc::new(MailBox::new()),
             }),
@@ -314,7 +318,7 @@ impl TaskControlBlock {
             let kernel_stack = KernelStack::new(&pid_handle);
             let kernel_stack_top = kernel_stack.get_top();
             let task_cx_ptr = kernel_stack.push_on_top(TaskContext::goto_trap_return());
-            debug!("spawned task cx ptr: {:#x?}", task_cx_ptr as usize);
+            trace!("spawned task cx ptr: {:#x?}", task_cx_ptr as usize);
 
             let task_control_block = Arc::new(TaskControlBlock {
                 pid: pid_handle,
@@ -337,6 +341,10 @@ impl TaskControlBlock {
                         Some(Arc::new(Stdout)),
                         // 2 -> stderr
                         Some(Arc::new(Stdout)),
+                        // 3 -> serial 2
+                        Some(Arc::new(Serial::<2>)),
+                        // 4 -> serial 3
+                        Some(Arc::new(Serial::<3>)),
                     ],
                     mail_box: Arc::new(MailBox::new()),
                 }),
