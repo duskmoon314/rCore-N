@@ -125,10 +125,10 @@ lazy_static! {
 }
 
 pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<usize, UserTrapError> {
-    // debug!(
-    //     "[push trap record] pid: {}, cause: {}, message: {}",
-    //     pid, trap_record.cause, trap_record.message
-    // );
+    debug!(
+        "[push trap record] pid: {}, cause: {}, message: {}",
+        pid, trap_record.cause, trap_record.message
+    );
     if let Some(tcb) = crate::task::find_task(pid) {
         let mut tcb_inner = tcb.acquire_inner_lock();
         if !tcb_inner.is_user_trap_enabled() {

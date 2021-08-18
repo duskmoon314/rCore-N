@@ -53,7 +53,7 @@ pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
         ucause::Trap::Interrupt(ucause::Interrupt::UserSoft) => {
             let trap_record_num = uscratch::read();
             println!(
-                "[user trap demo] user soft interrupt, num: {}",
+                "[user trap demo] trap record num: {}",
                 trap_record_num
             );
             let mut head_ptr = USER_TRAP_BUFFER as *const UserTrapRecord;
@@ -103,7 +103,7 @@ fn handle_timer_interrupt() {
         exit(0);
     } else {
         let msg = 0xdeadbeef00 + prev_trap_count as usize + 1;
-        println!("[user trap demo] sending msg: {:x?}", msg);
+        println!("[user trap demo] sending msg: {:#x}", msg);
         send_msg(PID.load(Ordering::SeqCst) as usize, msg);
     }
 }
