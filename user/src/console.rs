@@ -34,8 +34,9 @@ macro_rules! println {
 
 pub fn getchar() -> u8 {
     let mut c = [0u8; 1];
-    while c[0] == 0 {
-        read(STDIN, &mut c);
+    let mut res = -1;
+    while res == -1 {
+        res = read(STDIN, &mut c);
     }
     c[0]
 }

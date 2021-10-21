@@ -12,11 +12,14 @@ impl File for Stdin {
     fn read(&self, mut user_buf: UserBuffer) -> Result<usize, isize> {
         assert_eq!(user_buf.len(), 1);
         // busy loop
-        let ch = serial_getchar(0);
-        unsafe {
-            user_buf.buffers[0].as_mut_ptr().write_volatile(ch);
+        if let Ok(ch) = serial_getchar(0) {
+            unsafe {
+                user_buf.buffers[0].as_mut_ptr().write_volatile(ch);
+            }
+            Ok(1)
+        } else {
+            Err(-1)
         }
-        Ok(1)
     }
     fn write(&self, _user_buf: UserBuffer) -> Result<usize, isize> {
         panic!("Cannot write to stdin!");
