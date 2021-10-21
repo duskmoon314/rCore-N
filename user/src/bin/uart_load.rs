@@ -29,7 +29,8 @@ static TX_SEED: AtomicU32 = AtomicU32::new(0);
 static MODE: AtomicU32 = AtomicU32::new(0);
 
 const TEST_TIME_US: isize = 1000_000;
-const HALF_FIFO_DEPTH: usize = FIFO_DEPTH / 2;
+// const HALF_FIFO_DEPTH: usize = FIFO_DEPTH / 2;
+const HALF_FIFO_DEPTH: usize = 2;
 const BAUD_RATE: usize = 1_152_000;
 
 type Rng = Arc<Mutex<XorShiftRng>>;
@@ -87,31 +88,26 @@ pub fn main() -> i32 {
 }
 
 fn kernel_driver_test() -> (usize, usize, usize) {
-    let (mut tx_rng, mut rx_rng) = (TX_RNG.lock(), RX_RNG.lock());
+    let mut tx_rng = TX_RNG.lock();
+    let mut rx_rng = RX_RNG.lock();
     let mut tx_count = 0;
     let mut rx_count = 0;
     let mut error_count: usize = 0;
     let mut next_tx = tx_rng.next_u32();
     let mut expect_rx = rx_rng.next_u32();
     let tx_fd = irq_to_serial_id(UART_IRQN.load(Relaxed)) + 1;
-    let rx_fd = {
-        if tx_fd == 3 {
-            4
-        } else {
-            3
-        }
-    } as usize;
-    println!(
-        "[uart load] Kernel mode, tx fd: {}, rx_fd: {}",
-        tx_fd, rx_fd
-    );
+    let rx_fd = tx_fd;
+    // if tx_fd == 3 {
+    //     println!(
+    //         "[uart load] Kernel mode, tx fd: {}, rx_fd: {}, next_tx: {}, rx: {}",
+    //         tx_fd, rx_fd, next_tx as u8, expect_rx as u8,
+    //     );
+    // }
     let mut tx_buf = [0u8; HALF_FIFO_DEPTH];
     let mut rx_buf = [0u8; 1];
-    for _ in 0..1000 {
-        read(rx_fd, &mut rx_buf);
-    }
+    while read(rx_fd, &mut rx_buf) != -1 {}
+    sleep(20);
     let time_us = get_time() * 1000;
-
     set_timer(time_us + TEST_TIME_US);
     while !(IS_TIMEOUT.load(Relaxed)) {
         for i in 0..HALF_FIFO_DEPTH {
@@ -122,15 +118,24 @@ fn kernel_driver_test() -> (usize, usize, usize) {
         tx_count += HALF_FIFO_DEPTH;
         let mut rx_fifo_count = 0;
         while !(IS_TIMEOUT.load(Relaxed)) && rx_fifo_count < HALF_FIFO_DEPTH {
-            read(rx_fd, &mut rx_buf);
-            if rx_buf[0] != 0 {
-                if rx_buf[0] != expect_rx as u8 {
-                    error_count += 1;
-                }
-                rx_count += 1;
-                expect_rx = rx_rng.next_u32();
-                rx_fifo_count += 1;
+            while !(IS_TIMEOUT.load(Relaxed)) && read(rx_fd, &mut rx_buf) == -1 {}
+            if rx_buf[0] != expect_rx as u8 {
+                // if error_count == 0 {
+                //     if tx_fd == 3 {
+                //         // delay to avoid mess in terminal
+                //         sleep(300);
+                //     }
+                //     println!(
+                //         "[uart load] fd {} error at {}: expect {}, received {}!",
+                //         rx_fd, rx_count, expect_rx as u8, rx_buf[0],
+                //     );
+                //     IS_TIMEOUT.store(true, Relaxed);
+                // }
+                error_count += 1;
             }
+            rx_count += 1;
+            expect_rx = rx_rng.next_u32();
+            rx_fifo_count += 1;
         }
     }
     (rx_count, tx_count, error_count)

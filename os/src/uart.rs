@@ -1,5 +1,4 @@
 use alloc::collections::VecDeque;
-use alloc::sync::Arc;
 use core::convert::Infallible;
 use embedded_hal::serial::{Read, Write};
 use lazy_static::*;
@@ -79,7 +78,7 @@ impl BufferedSerial {
         let _ = hardware.read_lsr();
         hardware.init(100_000_000, baud_rate);
         // Rx FIFO trigger level=4, reset Rx & Tx FIFO, enable FIFO
-        hardware.write_fcr(0b01_000_11_1);
+        hardware.write_fcr(0b11_000_11_1);
     }
 
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
@@ -91,8 +90,12 @@ impl BufferedSerial {
                 InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
                     // trace!("Received data available");
                     while let Some(ch) = hardware.read_byte() {
-                        self.rx_buffer.push_back(ch);
-                        self.rx_count += 1;
+                        if self.rx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
+                            self.rx_buffer.push_back(ch);
+                            self.rx_count += 1;
+                        } else {
+                            warn!("Serial rx buffer overflow!");
+                        }
                     }
                 }
                 InterruptType::TransmitterHoldingRegisterEmpty => {
@@ -108,7 +111,7 @@ impl BufferedSerial {
                     }
                 }
                 InterruptType::ModemStatus => {
-                    trace!(
+                    debug!(
                         "MSR: {:#x}, LSR: {:#x}, IER: {:#x}",
                         hardware.read_msr(),
                         hardware.read_lsr(),
@@ -129,20 +132,22 @@ impl Write<u8> for BufferedSerial {
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
         let serial = &mut self.hardware;
-        if serial.is_transmitter_holding_register_empty() {
-            for _ in 0..FIFO_DEPTH {
-                if let Some(ch) = self.tx_buffer.pop_front() {
-                    serial.write_byte(ch);
-                    self.tx_count += 1;
-                }
-            }
-        }
-        if !serial.is_transmitter_holding_register_empty_interrupt_enabled() {
-            serial.enable_transmitter_holding_register_empty_interrupt();
-        }
+        // if serial.is_transmitter_holding_register_empty() {
+        //     for _ in 0..FIFO_DEPTH {
+        //         if let Some(ch) = self.tx_buffer.pop_front() {
+        //             serial.write_byte(ch);
+        //             self.tx_count += 1;
+        //         }
+        //     }
+        // }
+
         if self.tx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
             self.tx_buffer.push_back(word);
+            if !serial.is_transmitter_holding_register_empty_interrupt_enabled() {
+                serial.enable_transmitter_holding_register_empty_interrupt();
+            }
         } else {
+            warn!("Serial tx buffer overflow!");
             return Err(nb::Error::WouldBlock);
         }
 
@@ -176,10 +181,10 @@ impl Read<u8> for BufferedSerial {
 
 #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
 lazy_static! {
-    pub static ref BUFFERED_SERIAL: [Arc<Mutex<BufferedSerial>>; SERIAL_NUM] =
-        array_init::array_init(|i| Arc::new(Mutex::new(BufferedSerial::new(
+    pub static ref BUFFERED_SERIAL: [Mutex<BufferedSerial>; SERIAL_NUM] =
+        array_init::array_init(|i| Mutex::new(BufferedSerial::new(
             SERIAL_BASE_ADDRESS + i * SERIAL_ADDRESS_STRIDE,
-        ))));
+        )));
 }
 
 #[cfg(feature = "board_lrv_seriallite")]
@@ -246,6 +251,6 @@ pub fn serial_putchar(serial_id: usize, c: u8) {
 }
 
 #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
-pub fn serial_getchar(serial_id: usize) -> u8 {
-    BUFFERED_SERIAL[serial_id].lock().try_read().unwrap_or(0)
+pub fn serial_getchar(serial_id: usize) -> nb::Result<u8, Infallible> {
+    BUFFERED_SERIAL[serial_id].lock().try_read()
 }
