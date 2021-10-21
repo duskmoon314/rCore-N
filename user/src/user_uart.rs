@@ -81,7 +81,7 @@ impl BufferedSerial {
         hardware.write_mcr(0);
         hardware.init(100_000_000, baud_rate);
         // Rx FIFO trigger level=8, reset Rx & Tx FIFO, enable FIFO
-        hardware.write_fcr(0b01_000_11_1);
+        hardware.write_fcr(0b10_000_11_1);
     }
 
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
@@ -133,20 +133,22 @@ impl Write<u8> for BufferedSerial {
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
         let serial = &mut self.hardware;
-        if serial.is_transmitter_holding_register_empty() {
-            for _ in 0..FIFO_DEPTH {
-                if let Some(ch) = self.tx_buffer.pop_front() {
-                    serial.write_byte(ch);
-                    self.tx_count += 1;
-                }
-            }
-        }
-        if !serial.is_transmitter_holding_register_empty_interrupt_enabled() {
-            serial.enable_transmitter_holding_register_empty_interrupt();
-        }
+        // if serial.is_transmitter_holding_register_empty() {
+        //     for _ in 0..FIFO_DEPTH {
+        //         if let Some(ch) = self.tx_buffer.pop_front() {
+        //             serial.write_byte(ch);
+        //             self.tx_count += 1;
+        //         }
+        //     }
+        // }
+
         if self.tx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
             self.tx_buffer.push_back(word);
+            if !serial.is_transmitter_holding_register_empty_interrupt_enabled() {
+                serial.enable_transmitter_holding_register_empty_interrupt();
+            }
         } else {
+            println!("[USER SERIAL] Tx buffer overflow!");
             return Err(nb::Error::WouldBlock);
         }
 
@@ -203,7 +205,7 @@ impl PollingSerial {
         hardware.init(100_000_000, baud_rate);
         hardware.write_ier(0);
         // Rx FIFO trigger level=4, reset Rx & Tx FIFO, enable FIFO
-        hardware.write_fcr(0b01_000_11_1);
+        hardware.write_fcr(0b11_000_11_1);
     }
 
     pub fn interrupt_handler(&mut self) {}

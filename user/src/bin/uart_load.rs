@@ -30,7 +30,7 @@ static MODE: AtomicU32 = AtomicU32::new(0);
 
 const TEST_TIME_US: isize = 1000_000;
 // const HALF_FIFO_DEPTH: usize = FIFO_DEPTH / 2;
-const HALF_FIFO_DEPTH: usize = 2;
+const HALF_FIFO_DEPTH: usize = 6;
 const BAUD_RATE: usize = 1_152_000;
 
 type Rng = Arc<Mutex<XorShiftRng>>;
@@ -222,6 +222,17 @@ fn user_intr_test() -> (usize, usize, usize) {
             if rx_res.is_ok() {
                 let rx_val = rx_res.unwrap();
                 if rx_val != expect_rx as u8 {
+                    if error_count == 0 {
+                        if uart_irqn == 14 {
+                            // delay to avoid mess in terminal
+                            sleep(300);
+                        }
+                        println!(
+                            "[uart load] uart {} error at {}: expect {}, received {}!",
+                            uart_irqn, serial.rx_count, expect_rx as u8, rx_buf[0],
+                        );
+                        IS_TIMEOUT.store(true, Relaxed);
+                    }
                     error_count += 1;
                 }
                 // expect_rx = rx_rng.next_u32();
@@ -247,8 +258,8 @@ fn user_intr_test() -> (usize, usize, usize) {
         uie::clear_utimer();
     }
 
-    if uart_irqn == 7 {
-        sleep(300);
+    if uart_irqn == 14 {
+        sleep(500);
         // println!("rx buf:");
         // for ch in rx_buf.iter() {
         //     print!("{}", *ch as char);
