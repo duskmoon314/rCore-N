@@ -1,6 +1,6 @@
 QEMU := "../../qemu-build/riscv64-softmmu/qemu-system-riscv64"
 # machine, supervisor, user, echo1, echo2
-SERIAL_FLAGS := "-serial /dev/pts/3 -serial /dev/pts/4 -serial /dev/pts/5 -serial tcp::23334,server,nowait -serial tcp:localhost:23334"
+SERIAL_FLAGS := "-serial /dev/pts/4 -serial /dev/pts/6 -serial /dev/pts/5 -serial tcp::23334,server,nowait -serial tcp:localhost:23334"
 
 TARGET := "riscv64imac-unknown-none-elf"
 MODE := "debug"
@@ -20,13 +20,16 @@ clean:
 user:
     cd ../user && make build
 
+user_lrv:
+    cd ../user && make build_lrv
+
 build: user
     cp src/linker-qemu.ld src/linker.ld
     cargo build --features "board_qemu"
     {{OBJCOPY}} {{KERNEL_ELF}} --strip-all -O binary {{KERNEL_BIN}}
     rm src/linker.ld
 
-build_lrv: user
+build_lrv: user_lrv
     cp src/linker-lrv.ld src/linker.ld
     cargo build --features "board_lrv"
     {{OBJCOPY}} {{KERNEL_ELF}} --strip-all -O binary {{KERNEL_BIN}}
