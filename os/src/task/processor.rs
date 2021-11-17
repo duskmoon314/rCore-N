@@ -49,6 +49,7 @@ impl Processor {
     }
 
     fn run_next(&self, task: Arc<TaskControlBlock>) {
+        // debug!("run next");
         let idle_task_cx_ptr2 = self.get_idle_task_cx_ptr2();
         // acquire
         let mut task_inner = task.acquire_inner_lock();
@@ -106,6 +107,7 @@ impl Processor {
     }
 
     fn suspend_current(&self) {
+        // debug!("suspend current");
         if let Some(task) = take_current_task() {
             // ---- hold current PCB lock
             let mut task_inner = task.acquire_inner_lock();
@@ -127,7 +129,14 @@ impl Processor {
             if let Some(task) = fetch_task() {
                 self.run_next(task);
                 // __switch inside run_next
+                // debug!("idle");
                 self.suspend_current();
+            } else {
+                // add some idle cycle to allow other core lock task pool
+                // and put task into it
+                for _ in 0..1000 {
+                    unsafe { asm!("csrr x0, sscratch") }
+                }
             }
         }
     }
@@ -186,6 +195,7 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 }
 
 pub fn schedule(switched_task_cx_ptr2: *const usize) {
+    // debug!("scheduling");
     let idle_task_cx_ptr2 = PROCESSORS[hart_id()].get_idle_task_cx_ptr2();
     unsafe {
         __switch(switched_task_cx_ptr2, idle_task_cx_ptr2);
