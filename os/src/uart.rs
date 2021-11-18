@@ -77,6 +77,8 @@ impl BufferedSerial {
         let _ = hardware.read_msr();
         let _ = hardware.read_lsr();
         hardware.init(100_000_000, baud_rate);
+        hardware.enable_received_data_available_interrupt();
+        hardware.enable_transmitter_holding_register_empty_interrupt();
         // Rx FIFO trigger level=4, reset Rx & Tx FIFO, enable FIFO
         hardware.write_fcr(0b11_000_11_1);
     }
@@ -84,7 +86,7 @@ impl BufferedSerial {
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     pub fn interrupt_handler(&mut self) {
         let hardware = &self.hardware;
-        if let Some(int_type) = hardware.read_interrupt_type() {
+        while let Some(int_type) = hardware.read_interrupt_type() {
             self.intr_count += 1;
             match int_type {
                 InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
@@ -166,15 +168,16 @@ impl Read<u8> for BufferedSerial {
         if let Some(ch) = self.rx_buffer.pop_front() {
             Ok(ch)
         } else {
-            #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
-            {
-                // Drain UART Rx FIFO
-                while let Some(ch_read) = self.hardware.read_byte() {
-                    self.rx_buffer.push_back(ch_read);
-                    self.rx_count += 1;
-                }
-            }
-            self.rx_buffer.pop_front().ok_or(nb::Error::WouldBlock)
+            // #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+            // {
+            //     // Drain UART Rx FIFO
+            //     while let Some(ch_read) = self.hardware.read_byte() {
+            //         self.rx_buffer.push_back(ch_read);
+            //         self.rx_count += 1;
+            //     }
+            // }
+            // self.rx_buffer.pop_front().ok_or(nb::Error::WouldBlock)
+            Err(nb::Error::WouldBlock)
         }
     }
 }

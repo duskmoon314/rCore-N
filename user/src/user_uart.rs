@@ -81,13 +81,16 @@ impl BufferedSerial {
         hardware.write_mcr(0);
         hardware.init(100_000_000, baud_rate);
         // Rx FIFO trigger level=8, reset Rx & Tx FIFO, enable FIFO
+        hardware.enable_received_data_available_interrupt();
+        hardware.enable_transmitter_holding_register_empty_interrupt();
         hardware.write_fcr(0b10_000_11_1);
     }
 
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     pub fn interrupt_handler(&mut self) {
+        // println!("[SERIAL] Interrupt!");
         let hardware = &self.hardware;
-        if let Some(int_type) = hardware.read_interrupt_type() {
+        while let Some(int_type) = hardware.read_interrupt_type() {
             self.intr_count += 1;
             match int_type {
                 InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
@@ -148,7 +151,7 @@ impl Write<u8> for BufferedSerial {
                 serial.enable_transmitter_holding_register_empty_interrupt();
             }
         } else {
-            println!("[USER SERIAL] Tx buffer overflow!");
+            // println!("[USER SERIAL] Tx buffer overflow!");
             return Err(nb::Error::WouldBlock);
         }
 
@@ -167,15 +170,16 @@ impl Read<u8> for BufferedSerial {
         if let Some(ch) = self.rx_buffer.pop_front() {
             Ok(ch)
         } else {
-            #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
-            {
-                // Drain UART Rx FIFO
-                while let Some(ch_read) = self.hardware.read_byte() {
-                    self.rx_buffer.push_back(ch_read);
-                    self.rx_count += 1;
-                }
-            }
-            self.rx_buffer.pop_front().ok_or(nb::Error::WouldBlock)
+            // #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+            // {
+            //     // Drain UART Rx FIFO
+            //     while let Some(ch_read) = self.hardware.read_byte() {
+            //         self.rx_buffer.push_back(ch_read);
+            //         self.rx_count += 1;
+            //     }
+            // }
+            // self.rx_buffer.pop_front().ok_or(nb::Error::WouldBlock)
+            Err(nb::Error::WouldBlock)
         }
     }
 }
