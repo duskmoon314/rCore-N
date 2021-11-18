@@ -64,10 +64,12 @@ pub fn handle_external_interrupt(hart_id: usize) {
     let context = get_context(hart_id, 'S');
     while let Some(irq) = Plic::claim(context) {
         let mut can_user_handle = false;
-        if let Some(pid) = USER_EXT_INT_MAP.lock().get(&irq) {
+        let uei_map = USER_EXT_INT_MAP.lock();
+        if let Some(pid) = uei_map.get(&irq).cloned() {
             trace!("[PLIC] irq {:?} mapped to pid {:?}", irq, pid);
+            drop(uei_map); // avoid deadlock with sys_set_ext_int_enable
             if push_trap_record(
-                *pid,
+                pid,
                 UserTrapRecord {
                     // User External Interrupt
                     cause: 8,

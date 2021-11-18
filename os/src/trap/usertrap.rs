@@ -120,12 +120,11 @@ impl UserTrapInfo {
 }
 
 lazy_static! {
-    pub static ref USER_EXT_INT_MAP: Arc<Mutex<BTreeMap<u16, usize>>> =
-        Arc::new(Mutex::new(BTreeMap::new()));
+    pub static ref USER_EXT_INT_MAP: Mutex<BTreeMap<u16, usize>> = Mutex::new(BTreeMap::new());
 }
 
 pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<usize, UserTrapError> {
-    debug!(
+    trace!(
         "[push trap record] pid: {}, cause: {}, message: {}",
         pid, trap_record.cause, trap_record.message
     );
@@ -133,7 +132,7 @@ pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<usize
         let mut tcb_inner = tcb.acquire_inner_lock();
         if !tcb_inner.is_user_trap_enabled() {
             warn!("[push trap record] User trap disabled!");
-            return Err(UserTrapError::TrapDisabled);
+            // return Err(UserTrapError::TrapDisabled);
         }
         if let Some(trap_info) = &mut tcb_inner.user_trap_info {
             unsafe { trap_info.push_trap_record(trap_record) }
