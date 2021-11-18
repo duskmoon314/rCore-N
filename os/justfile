@@ -3,7 +3,7 @@ QEMU := "../../qemu-build/riscv64-softmmu/qemu-system-riscv64"
 SERIAL_FLAGS := "-serial /dev/pts/4 -serial /dev/pts/6 -serial /dev/pts/5 -serial tcp::23334,server,nowait -serial tcp:localhost:23334"
 
 TARGET := "riscv64imac-unknown-none-elf"
-MODE := "debug"
+MODE := "release"
 OBJDUMP := "rust-objdump --arch-name=riscv64"
 OBJCOPY := "rust-objcopy --binary-architecture=riscv64"
 
@@ -25,13 +25,13 @@ user_lrv:
 
 build: user
     cp src/linker-qemu.ld src/linker.ld
-    cargo build --features "board_qemu"
+    cargo build --features "board_qemu" --release
     {{OBJCOPY}} {{KERNEL_ELF}} --strip-all -O binary {{KERNEL_BIN}}
     rm src/linker.ld
 
 build_lrv: user_lrv
     cp src/linker-lrv.ld src/linker.ld
-    cargo build --features "board_lrv"
+    cargo build --features "board_lrv" --release
     {{OBJCOPY}} {{KERNEL_ELF}} --strip-all -O binary {{KERNEL_BIN}}
     cp {{KERNEL_BIN}} {{KERNEL_BIN_LRV}}
     rm src/linker.ld
@@ -40,7 +40,7 @@ disasm: build
     {{OBJDUMP}} -S {{KERNEL_ELF}} > {{KERNEL_ASM}}
 
 disasm_lrv: build_lrv
-    {{OBJDUMP}} -D -S {{KERNEL_ELF}} > {{KERNEL_ASM}}
+    {{OBJDUMP}} -S {{KERNEL_ELF}} > {{KERNEL_ASM}}
 
 run: build
     {{QEMU}} -machine virt -smp 4 {{SERIAL_FLAGS}} -nographic -bios ./rustsbi-qemu.bin -device loader,file={{KERNEL_BIN}},addr=0x80200000
