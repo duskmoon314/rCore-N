@@ -131,12 +131,6 @@ impl Processor {
                 // __switch inside run_next
                 // debug!("idle");
                 self.suspend_current();
-            } else {
-                // add some idle cycle to allow other core lock task pool
-                // and put task into it
-                for _ in 0..1000 {
-                    unsafe { asm!("csrr x0, sscratch") }
-                }
             }
         }
     }
