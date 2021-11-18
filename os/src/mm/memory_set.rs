@@ -7,6 +7,7 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use lazy_static::*;
+use riscv::asm::sfence_vma_all;
 use riscv::register::satp;
 use spin::Mutex;
 
@@ -166,6 +167,7 @@ impl MemorySet {
             ),
             None,
         );
+        unsafe { asm!("fence.i") }
         memory_set
     }
     /// Include sections in elf and trampoline and TrapContext and user stack,
@@ -230,6 +232,7 @@ impl MemorySet {
             ),
             None,
         );
+        unsafe { asm!("fence.i") }
         (
             memory_set,
             user_stack_top,
@@ -253,13 +256,14 @@ impl MemorySet {
                     .copy_from_slice(src_ppn.get_bytes_array());
             }
         }
+        unsafe { asm!("fence.i") }
         memory_set
     }
     pub fn activate(&self) {
         let satp = self.page_table.token();
         unsafe {
             satp::write(satp);
-            llvm_asm!("sfence.vma" :::: "volatile");
+            sfence_vma_all();
         }
     }
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {

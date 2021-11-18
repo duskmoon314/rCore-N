@@ -1,4 +1,4 @@
-use super::{current_task, TaskControlBlock};
+use super::TaskControlBlock;
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 
@@ -29,7 +29,7 @@ impl TaskManager {
         self.ready_queue.pop_front()
     }
 
-    pub fn priorityze(&mut self, pid: usize) {
+    pub fn prioritize(&mut self, pid: usize) {
         let q = &mut self.ready_queue;
         if q.is_empty() || q.len() == 1 {
             return;

@@ -1,4 +1,3 @@
-use crate::task::prioritize_task;
 use crate::trap::{push_trap_record, UserTrapRecord, USER_EXT_INT_MAP};
 use crate::uart;
 use rv_plic::{Priority, PLIC};
@@ -57,6 +56,7 @@ pub fn init_hart(hart_id: usize) {
     Plic::enable(context, 6);
     Plic::enable(context, 7);
     Plic::set_threshold(context, Priority::any());
+    Plic::set_threshold(get_context(hart_id, 'U'), Priority::any());
     Plic::set_threshold(get_context(hart_id, 'M'), Priority::never());
 }
 

@@ -8,8 +8,8 @@ use crate::{
 };
 
 pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
-    if fd == 3 || fd == 4 {
-        trace!("sys_write {} {}", fd, len);
+    if fd == 3 || fd == 4 || fd == 0 || fd == 1 {
+        // debug!("sys_write {} {}", fd, len);
     }
     let token = current_user_token();
     let task = current_task().unwrap();
@@ -35,8 +35,8 @@ pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
 }
 
 pub fn sys_read(fd: usize, buf: *const u8, len: usize) -> isize {
-    if fd == 3 || fd == 4 {
-        trace!("sys_read {} {}", fd, len);
+    if fd == 3 || fd == 4 || fd == 0 || fd == 1 {
+        // debug!("sys_read {} {}", fd, len);
     }
     let token = current_user_token();
     let task = current_task().unwrap();
@@ -51,13 +51,13 @@ pub fn sys_read(fd: usize, buf: *const u8, len: usize) -> isize {
         if let Ok(buffers) = translated_byte_buffer(token, buf, len) {
             match file.read(UserBuffer::new(buffers)) {
                 Ok(read_len) => read_len as isize,
-                Err(_) => -1,
+                Err(_) => -2,
             }
         } else {
-            -1
+            -3
         }
     } else {
-        -1
+        -4
     }
 }
 
