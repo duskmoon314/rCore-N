@@ -10,7 +10,7 @@ use core::sync::atomic::{AtomicIsize, Ordering};
 use riscv::register::uie;
 use user_lib::{
     exit, get_time, init_user_trap, send_msg, set_timer, spawn, yield_, UserTrapContext,
-    UserTrapRecord,
+    UserTrapQueue,
 };
 
 static PID: AtomicIsize = AtomicIsize::new(0);
@@ -40,7 +40,7 @@ pub fn main() -> i32 {
     0
 }
 
-use riscv::register::{ucause, uepc, uip, uscratch, utval};
+use riscv::register::{ucause, uepc, uip, utval};
 pub const PAGE_SIZE: usize = 0x1000;
 pub const TRAMPOLINE: usize = usize::MAX - PAGE_SIZE + 1;
 pub const TRAP_CONTEXT: usize = TRAMPOLINE - PAGE_SIZE;
@@ -51,24 +51,15 @@ pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
     let utval = utval::read();
     match ucause.cause() {
         ucause::Trap::Interrupt(ucause::Interrupt::UserSoft) => {
-            let trap_record_num = uscratch::read();
-            println!(
-                "[user trap demo] trap record num: {}",
-                trap_record_num
-            );
-            let mut head_ptr = USER_TRAP_BUFFER as *const UserTrapRecord;
-            for _ in 0..trap_record_num {
-                unsafe {
-                    let trap_record = *head_ptr;
-                    let cause = trap_record.cause;
-                    println!(
-                        "[user trap demo] cause: {}, message {}",
-                        cause, trap_record.message,
-                    );
-                    if ucause::Interrupt::from(cause) == ucause::Interrupt::UserTimer {
-                        handle_timer_interrupt();
-                    }
-                    head_ptr = head_ptr.offset(1);
+            let trap_queue = unsafe { &mut *(USER_TRAP_BUFFER as *mut UserTrapQueue) };
+            let trap_record_num = trap_queue.len();
+            println!("[user trap demo] trap record num: {}", trap_record_num);
+            while let Some(trap_record) = trap_queue.dequeue() {
+                let cause = trap_record.cause;
+                let msg = trap_record.message;
+                println!("[user trap demo] cause: {}, message {}", cause, msg,);
+                if ucause::Interrupt::from(cause) == ucause::Interrupt::UserTimer {
+                    handle_timer_interrupt();
                 }
             }
             unsafe {

@@ -1,9 +1,11 @@
-use riscv::register::{ucause, uepc, uip, uscratch, ustatus::Ustatus, utval};
+use heapless::spsc::Queue;
+use riscv::register::{ucause, uepc, uip, ustatus::Ustatus, utval};
 
 pub const PAGE_SIZE: usize = 0x1000;
 pub const TRAMPOLINE: usize = usize::MAX - PAGE_SIZE + 1;
 pub const TRAP_CONTEXT: usize = TRAMPOLINE - PAGE_SIZE;
 pub const USER_TRAP_BUFFER: usize = TRAP_CONTEXT - PAGE_SIZE;
+const MAX_USER_TRAP_NUM: usize = 64;
 
 use rv_plic::PLIC;
 pub const PLIC_BASE: usize = 0xc00_0000;
@@ -45,6 +47,7 @@ pub struct UserTrapRecord {
     pub message: usize,
 }
 
+pub type UserTrapQueue = Queue<UserTrapRecord, MAX_USER_TRAP_NUM>;
 global_asm!(include_str!("trap.asm"));
 
 #[linkage = "weak"]
@@ -54,25 +57,23 @@ pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
     let utval = utval::read();
     match ucause.cause() {
         ucause::Trap::Interrupt(ucause::Interrupt::UserSoft) => {
-            let trap_record_num = uscratch::read();
-            let mut head_ptr = USER_TRAP_BUFFER as *const UserTrapRecord;
-            for _ in 0..trap_record_num {
-                unsafe {
-                    let trap_record = *head_ptr;
-                    let cause = trap_record.cause;
-                    let msg = trap_record.message;
-                    if cause & 0xF == 0 {
-                        // "real" soft interrupt
-                        let pid = cause >> 4;
-                        soft_intr_handler(pid, msg);
-                    } else if ucause::Interrupt::from(cause) == ucause::Interrupt::UserExternal {
-                        let irq = trap_record.message as u16;
-                        ext_intr_handler(irq, true);
-                        // Plic::complete(get_context(hart_id(), 'U'), irq);
-                    } else if ucause::Interrupt::from(cause) == ucause::Interrupt::UserTimer {
-                        timer_intr_handler(msg);
-                    }
-                    head_ptr = head_ptr.offset(1);
+            let trap_queue = unsafe { &mut *(USER_TRAP_BUFFER as *mut UserTrapQueue) };
+            // println!(
+            //     "[user trap] Received {} trap from kernel.",
+            //     trap_queue.len()
+            // );
+            while let Some(trap_record) = trap_queue.dequeue() {
+                let cause = trap_record.cause;
+                let msg = trap_record.message;
+                if cause & 0xF == 0 {
+                    // "real" soft interrupt
+                    let pid = cause >> 4;
+                    soft_intr_handler(pid, msg);
+                } else if ucause::Interrupt::from(cause) == ucause::Interrupt::UserExternal {
+                    let irq = trap_record.message as u16;
+                    ext_intr_handler(irq, true);
+                } else if ucause::Interrupt::from(cause) == ucause::Interrupt::UserTimer {
+                    timer_intr_handler(msg);
                 }
             }
             unsafe {
@@ -82,7 +83,6 @@ pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
         ucause::Trap::Interrupt(ucause::Interrupt::UserExternal) => {
             while let Some(irq) = Plic::claim(get_context(hart_id(), 'U')) {
                 ext_intr_handler(irq, false);
-                // Plic::complete(get_context(hart_id(), 'U'), irq);
             }
             // println!("[user trap] user external finished");
         }

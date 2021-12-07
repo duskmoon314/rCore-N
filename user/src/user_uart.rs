@@ -57,6 +57,7 @@ pub struct BufferedSerial {
     pub intr_count: usize,
     pub rx_intr_count: usize,
     pub tx_intr_count: usize,
+    pub tx_fifo_count: usize,
 }
 
 impl BufferedSerial {
@@ -70,6 +71,7 @@ impl BufferedSerial {
             intr_count: 0,
             rx_intr_count: 0,
             tx_intr_count: 0,
+            tx_fifo_count: 0,
         }
     }
 
@@ -82,7 +84,6 @@ impl BufferedSerial {
         hardware.init(100_000_000, baud_rate);
         // Rx FIFO trigger level=8, reset Rx & Tx FIFO, enable FIFO
         hardware.enable_received_data_available_interrupt();
-        hardware.enable_transmitter_holding_register_empty_interrupt();
         hardware.write_fcr(0b10_000_11_1);
     }
 
@@ -97,8 +98,14 @@ impl BufferedSerial {
                     // println!("[SERIAL] Received data available");
                     self.rx_intr_count += 1;
                     while let Some(ch) = hardware.read_byte() {
-                        let _ = self.rx_buffer.push_back(ch);
-                        self.rx_count += 1;
+                        // let _ = self.rx_buffer.push_back(ch);
+                        // self.rx_count += 1;
+                        if self.rx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
+                            self.rx_buffer.push_back(ch);
+                            self.rx_count += 1;
+                        } else {
+                            println!("[USER UART] Serial rx buffer overflow!");
+                        }
                     }
                 }
                 InterruptType::TransmitterHoldingRegisterEmpty => {
@@ -157,6 +164,20 @@ impl Write<u8> for BufferedSerial {
 
         Ok(())
     }
+
+    // #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+    // fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
+    //     let serial = &mut self.hardware;
+    //     while self.tx_fifo_count >= FIFO_DEPTH {
+    //         if serial.lsr().contains(LSR::THRE) {
+    //             self.tx_fifo_count = 0;
+    //         }
+    //     }
+    //     serial.write_byte(word);
+    //     self.tx_count += 1;
+    //     self.tx_fifo_count += 1;
+    //     Ok(())
+    // }
 
     fn try_flush(&mut self) -> nb::Result<(), Self::Error> {
         todo!()

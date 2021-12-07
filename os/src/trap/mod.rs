@@ -207,5 +207,5 @@ pub extern "C" fn trap_from_kernel() {
 
 pub use context::TrapContext;
 pub use usertrap::{
-    push_trap_record, UserTrapError, UserTrapInfo, UserTrapRecord, USER_EXT_INT_MAP,
+    push_trap_record, UserTrapError, UserTrapInfo, UserTrapQueue, UserTrapRecord, USER_EXT_INT_MAP,
 };

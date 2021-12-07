@@ -4,14 +4,15 @@ use crate::config::CPU_NUM;
 use crate::plic::Plic;
 use crate::task::hart_id;
 use crate::{mm::PhysPageNum, plic::get_context};
-use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
+use alloc::{collections::BTreeMap, vec::Vec};
+use heapless::spsc::Queue;
 use lazy_static::*;
 use spin::Mutex;
 
+pub type UserTrapQueue = Queue<UserTrapRecord, MAX_USER_TRAP_NUM>;
 #[derive(Clone)]
 pub struct UserTrapInfo {
     pub user_trap_buffer_ppn: PhysPageNum,
-    pub user_trap_record_num: usize,
     pub devices: Vec<(u16, bool)>,
 }
 
@@ -24,7 +25,6 @@ pub struct UserTrapRecord {
 
 pub enum UserTrapError {
     TaskNotFound,
-    TrapDisabled,
     TrapUninitialized,
     TrapBufferFull,
 }
@@ -34,19 +34,10 @@ impl UserTrapInfo {
     pub unsafe fn push_trap_record(
         &mut self,
         trap_record: UserTrapRecord,
-    ) -> Result<usize, UserTrapError> {
-        if self.user_trap_record_num < MAX_USER_TRAP_NUM {
-            let head_ptr: *mut UserTrapRecord =
-                self.user_trap_buffer_ppn.get_mut::<UserTrapRecord>();
-            let tail_ptr = head_ptr.add(self.user_trap_record_num);
-            tail_ptr.write(trap_record);
-            self.user_trap_record_num += 1;
-            // trace!("[push trap record] Succeeded");
-            Ok(self.user_trap_record_num)
-        } else {
-            warn!("[push trap record] User trap buffer overflow");
-            Err(UserTrapError::TrapBufferFull)
-        }
+    ) -> Result<(), UserTrapError> {
+        self.get_trap_queue_mut()
+            .enqueue(trap_record)
+            .or(Err(UserTrapError::TrapBufferFull))
     }
 
     pub fn enable_user_ext_int(&self) {
@@ -120,13 +111,25 @@ impl UserTrapInfo {
             }
         }
     }
+
+    pub fn get_trap_queue(&self) -> &UserTrapQueue {
+        self.user_trap_buffer_ppn.get_mut::<UserTrapQueue>()
+    }
+
+    pub fn get_trap_queue_mut(&mut self) -> &mut UserTrapQueue {
+        self.user_trap_buffer_ppn.get_mut::<UserTrapQueue>()
+    }
+
+    pub fn user_trap_record_num(&self) -> usize {
+        self.get_trap_queue().len()
+    }
 }
 
 lazy_static! {
     pub static ref USER_EXT_INT_MAP: Mutex<BTreeMap<u16, usize>> = Mutex::new(BTreeMap::new());
 }
 
-pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<usize, UserTrapError> {
+pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<(), UserTrapError> {
     trace!(
         "[push trap record] pid: {}, cause: {}, message: {}",
         pid,

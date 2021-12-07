@@ -3,7 +3,7 @@ use super::{pid_alloc, KernelStack, PidHandle};
 use crate::fs::{File, MailBox, Serial, Socket, Stdin, Stdout};
 use crate::mm::{translate_writable_va, MemorySet, PhysAddr, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::task::pid::add_task_2_map;
-use crate::trap::{trap_handler, TrapContext, UserTrapInfo};
+use crate::trap::{trap_handler, TrapContext, UserTrapInfo, UserTrapQueue};
 use crate::{
     config::{PAGE_SIZE, TRAP_CONTEXT, USER_TRAP_BUFFER},
     loader::get_app_data_by_name,
@@ -112,9 +112,10 @@ impl TaskControlBlockInner {
                     translate_writable_va(self.get_user_token(), USER_TRAP_BUFFER).unwrap();
                 self.user_trap_info = Some(UserTrapInfo {
                     user_trap_buffer_ppn: PhysPageNum::from(PhysAddr::from(phys_addr)),
-                    user_trap_record_num: 0,
                     devices: Vec::new(),
                 });
+                let trap_queue = self.user_trap_info.as_mut().unwrap().get_trap_queue_mut();
+                *trap_queue = UserTrapQueue::new();
                 unsafe {
                     sstatus::set_uie();
                 }
@@ -132,10 +133,16 @@ impl TaskControlBlockInner {
         use riscv::register::{uip, uscratch};
         if self.is_user_trap_enabled() {
             if let Some(trap_info) = &mut self.user_trap_info {
-                if trap_info.user_trap_record_num > 0 {
-                    trace!("restore {} user trap", trap_info.user_trap_record_num);
-                    uscratch::write(trap_info.user_trap_record_num as usize);
-                    trap_info.user_trap_record_num = 0;
+                // if trap_info.user_trap_record_num > 0 {
+                //     trace!("restore {} user trap", trap_info.user_trap_record_num);
+                //     uscratch::write(trap_info.user_trap_record_num as usize);
+                //     trap_info.user_trap_record_num = 0;
+                //     unsafe {
+                //         uip::set_usoft();
+                //     }
+                // }
+                if !trap_info.get_trap_queue().is_empty() {
+                    uscratch::write(trap_info.user_trap_record_num());
                     unsafe {
                         uip::set_usoft();
                     }

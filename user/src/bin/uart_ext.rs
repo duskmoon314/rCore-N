@@ -133,6 +133,8 @@ mod user_console {
 }
 
 mod user_trap {
+    use user_lib::trap::{get_context, hart_id, Plic};
+
     #[no_mangle]
     pub fn soft_intr_handler(pid: usize, msg: usize) {
         if msg == 15 {
@@ -152,6 +154,7 @@ mod user_trap {
         }
         if irq == crate::UART_IRQN {
             crate::SERIAL.lock().interrupt_handler();
+            Plic::complete(get_context(hart_id(), 'U'), irq);
         }
     }
 }

@@ -21,7 +21,7 @@ use alloc::vec::Vec;
 use buddy_system_allocator::LockedHeap;
 use syscall::*;
 
-pub use trap::{UserTrapContext, UserTrapRecord};
+pub use trap::{UserTrapContext, UserTrapQueue, UserTrapRecord};
 
 const USER_HEAP_SIZE: usize = 32768;
 
