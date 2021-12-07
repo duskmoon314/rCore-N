@@ -29,7 +29,8 @@ lazy_static! {
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
     let task = current_task().unwrap();
-    let task_inner = task.acquire_inner_lock();
+    let mut task_inner = task.acquire_inner_lock();
+    task_inner.time_intr_count += 1;
     let task_cx_ptr2 = task_inner.get_task_cx_ptr2();
     drop(task_inner);
 
@@ -42,8 +43,11 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     let task = take_current_task().unwrap();
     // **** hold current PCB lock
     let wl = WAIT_LOCK.lock();
-    debug!("pid: {} exited with code {}", task.pid.0, exit_code);
     let mut inner = task.acquire_inner_lock();
+    debug!(
+        "pid: {} exited with code {}, time intr: {}",
+        task.pid.0, exit_code, inner.time_intr_count
+    );
     if let Some(trap_info) = &inner.user_trap_info {
         trap_info.remove_user_ext_int_map();
         use riscv::register::sie;

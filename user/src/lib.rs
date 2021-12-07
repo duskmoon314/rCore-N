@@ -10,7 +10,7 @@
 pub mod console;
 mod lang_items;
 mod syscall;
-mod trap;
+pub mod trap;
 pub mod user_uart;
 
 extern crate alloc;

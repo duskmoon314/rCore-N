@@ -108,11 +108,14 @@ impl UserTrapInfo {
     pub fn remove_user_ext_int_map(&self) {
         let mut int_map = USER_EXT_INT_MAP.lock();
         for hart_id in 0..CPU_NUM {
+            let s_context = get_context(hart_id, 'S');
+            let u_context = get_context(hart_id, 'U');
             for (device_id, _) in &self.devices {
-                Plic::claim(get_context(hart_id, 'U'));
-                Plic::complete(get_context(hart_id, 'U'), *device_id);
-                Plic::disable(get_context(hart_id, 'U'), *device_id);
-                Plic::enable(get_context(hart_id, 'S'), *device_id);
+                Plic::enable(u_context, *device_id);
+                Plic::claim(u_context);
+                Plic::complete(u_context, *device_id);
+                Plic::disable(u_context, *device_id);
+                Plic::enable(s_context, *device_id);
                 int_map.remove(device_id);
             }
         }
@@ -126,7 +129,9 @@ lazy_static! {
 pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<usize, UserTrapError> {
     trace!(
         "[push trap record] pid: {}, cause: {}, message: {}",
-        pid, trap_record.cause, trap_record.message
+        pid,
+        trap_record.cause,
+        trap_record.message
     );
     if let Some(tcb) = crate::task::find_task(pid) {
         let mut tcb_inner = tcb.acquire_inner_lock();

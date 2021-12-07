@@ -37,6 +37,7 @@ pub struct TaskControlBlockInner {
     pub exit_code: i32,
     pub fd_table: Vec<Option<Arc<dyn File + Send + Sync>>>,
     pub mail_box: Arc<MailBox>,
+    pub time_intr_count: usize,
 }
 
 impl Debug for TaskControlBlockInner {
@@ -189,6 +190,7 @@ impl TaskControlBlock {
                     Some(Arc::new(Serial::<3>)),
                 ],
                 mail_box: Arc::new(MailBox::new()),
+                time_intr_count: 0,
             }),
         });
         add_task_2_map(task_control_block.getpid(), task_control_block.clone());
@@ -281,6 +283,7 @@ impl TaskControlBlock {
                 priority: 16,
                 fd_table: new_fd_table,
                 mail_box: Arc::new(MailBox::new()),
+                time_intr_count: 0,
             }),
         });
         add_task_2_map(task_control_block.getpid(), task_control_block.clone());
@@ -347,6 +350,7 @@ impl TaskControlBlock {
                         Some(Arc::new(Serial::<3>)),
                     ],
                     mail_box: Arc::new(MailBox::new()),
+                    time_intr_count: 0,
                 }),
             });
             add_task_2_map(task_control_block.getpid(), task_control_block.clone());
