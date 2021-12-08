@@ -6,8 +6,6 @@
 extern crate user_lib;
 extern crate alloc;
 
-use alloc::collections::VecDeque;
-use alloc::sync::Arc;
 use bitflags::bitflags;
 use core::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering::Relaxed};
 use embedded_hal::serial::{Read, Write};
@@ -18,30 +16,30 @@ use riscv::register::uie;
 use spin::Mutex;
 use user_lib::{
     claim_ext_int, get_time, init_user_trap, read, set_ext_int_enable, set_timer, sleep,
-    user_uart::*, write, yield_,
+    trap::{get_context, hart_id, Plic},
+    user_uart::*,
+    write, yield_,
 };
 
 static UART_IRQN: AtomicU16 = AtomicU16::new(0);
 static IS_INITIALIZED: AtomicBool = AtomicBool::new(false);
 static IS_TIMEOUT: AtomicBool = AtomicBool::new(false);
+static HAS_INTR: AtomicBool = AtomicBool::new(false);
 static RX_SEED: AtomicU32 = AtomicU32::new(0);
 static TX_SEED: AtomicU32 = AtomicU32::new(0);
 static MODE: AtomicU32 = AtomicU32::new(0);
 
 const TEST_TIME_US: isize = 1000_000;
 // const HALF_FIFO_DEPTH: usize = FIFO_DEPTH / 2;
-const HALF_FIFO_DEPTH: usize = 6;
-const BAUD_RATE: usize = 1_152_000;
+const HALF_FIFO_DEPTH: usize = 14;
+const BAUD_RATE: usize = 6250_000;
+const MAX_SHIFT: isize = 10;
 
-type Rng = Arc<Mutex<XorShiftRng>>;
+type Rng = Mutex<XorShiftRng>;
 
 lazy_static! {
-    static ref RX_RNG: Rng = Arc::new(Mutex::new(XorShiftRng::seed_from_u64(
-        RX_SEED.load(Relaxed) as u64
-    )));
-    static ref TX_RNG: Rng = Arc::new(Mutex::new(XorShiftRng::seed_from_u64(
-        TX_SEED.load(Relaxed) as u64
-    )));
+    static ref RX_RNG: Rng = Mutex::new(XorShiftRng::seed_from_u64(RX_SEED.load(Relaxed) as u64));
+    static ref TX_RNG: Rng = Mutex::new(XorShiftRng::seed_from_u64(TX_SEED.load(Relaxed) as u64));
 }
 
 bitflags! {
@@ -150,6 +148,7 @@ fn user_polling_test() -> (usize, usize, usize) {
     let mut tx_rng = TX_RNG.lock();
     let mut rx_rng = RX_RNG.lock();
     let mut error_count: usize = 0;
+    let mut err_pos = -1;
     let mut next_tx = tx_rng.next_u32();
     let mut expect_rx = rx_rng.next_u32();
 
@@ -161,96 +160,86 @@ fn user_polling_test() -> (usize, usize, usize) {
             serial.try_write(next_tx as u8).unwrap();
             next_tx = tx_rng.next_u32();
         }
-        let mut rx_fifo_count = 0;
-        while !(IS_TIMEOUT.load(Relaxed)) && rx_fifo_count < HALF_FIFO_DEPTH {
+        for _ in 0..HALF_FIFO_DEPTH {
             if let Ok(rx_val) = serial.try_read() {
-                if rx_val != expect_rx as u8 {
+                let mut max_shift = MAX_SHIFT;
+                if err_pos == -1 && rx_val != expect_rx as u8 {
+                    err_pos = serial.rx_count as isize;
+                }
+                while rx_val != expect_rx as u8 && max_shift > 0 {
                     error_count += 1;
+                    expect_rx = rx_rng.next_u32();
+                    max_shift -= 1;
                 }
                 expect_rx = rx_rng.next_u32();
-                rx_fifo_count += 1;
             }
         }
     }
 
+    if uart_irqn == 14 || uart_irqn == 6 {
+        sleep(500);
+    }
+    println!("[uart load] err pos: {}", err_pos);
     (serial.rx_count, serial.tx_count, error_count)
 }
 
-lazy_static! {
-    static ref INTR_SERIAL: Mutex<BufferedSerial> = Mutex::new(BufferedSerial::new(
-        get_base_addr_from_irq(UART_IRQN.load(Relaxed))
-    ));
-}
-
 fn user_intr_test() -> (usize, usize, usize) {
+    unsafe {
+        uie::clear_uext();
+        uie::clear_usoft();
+        uie::clear_utimer();
+    }
     let uart_irqn = UART_IRQN.load(Relaxed);
     let claim_res = claim_ext_int(uart_irqn as usize);
-    INTR_SERIAL.lock().hardware_init(BAUD_RATE);
+    let mut serial = BufferedSerial::new(get_base_addr_from_irq(uart_irqn));
+    serial.hardware_init(BAUD_RATE);
     let en_res = set_ext_int_enable(uart_irqn as usize, 1);
     println!(
         "[uart load] Interrupt mode, claim result: {:#x}, enable res: {:#x}",
         claim_res, en_res
     );
     let mut error_count: usize = 0;
-    // let mut tx_rng = TX_RNG.lock();
-    // let mut rx_rng = RX_RNG.lock();
-    // let mut next_tx = tx_rng.next_u32();
-    // let mut expect_rx = rx_rng.next_u32();
-    let mut next_tx = '0' as u8;
-    let mut expect_rx = '0' as u8;
-    let mut rx_buf = VecDeque::<u8>::with_capacity(10000);
+    let mut err_pos = -1;
+    let mut tx_rng = TX_RNG.lock();
+    let mut rx_rng = RX_RNG.lock();
+    let mut next_tx = tx_rng.next_u32();
+    let mut expect_rx = rx_rng.next_u32();
     let time_us = get_time() * 1000;
     set_timer(time_us + TEST_TIME_US);
 
+    unsafe {
+        uie::set_uext();
+        uie::set_usoft();
+        uie::set_utimer();
+    }
+
     while !(IS_TIMEOUT.load(Relaxed)) {
-        unsafe {
-            uie::clear_uext();
-            uie::clear_usoft();
-            uie::clear_utimer();
-        }
-        let mut serial = INTR_SERIAL.lock();
         for _ in 0..HALF_FIFO_DEPTH {
-            let tx_res = serial.try_write(next_tx as u8);
-            let rx_res = serial.try_read();
-            if tx_res.is_ok() {
-                // next_tx = tx_rng.next_u32();
-                next_tx += 1;
-                if next_tx > '9' as u8 {
-                    next_tx = '0' as u8;
-                }
+            if let Ok(()) = serial.try_write(next_tx as u8) {
+                next_tx = tx_rng.next_u32();
             }
-            if rx_res.is_ok() {
-                let rx_val = rx_res.unwrap();
-                if rx_val != expect_rx as u8 {
-                    if error_count == 0 {
-                        if uart_irqn == 14 {
-                            // delay to avoid mess in terminal
-                            sleep(300);
-                        }
-                        println!(
-                            "[uart load] uart {} error at {}: expect {}, received {}!",
-                            uart_irqn, serial.rx_count, expect_rx as u8, rx_buf[0],
-                        );
-                        IS_TIMEOUT.store(true, Relaxed);
-                    }
+        }
+
+        for _ in 0..HALF_FIFO_DEPTH {
+            if let Ok(rx_val) = serial.try_read() {
+                let mut max_shift = MAX_SHIFT;
+                if err_pos == -1 && rx_val != expect_rx as u8 {
+                    err_pos = serial.rx_count as isize;
+                }
+                while rx_val != expect_rx as u8 && max_shift > 0 {
                     error_count += 1;
+                    max_shift -= 1;
+                    expect_rx = rx_rng.next_u32();
                 }
-                // expect_rx = rx_rng.next_u32();
-                expect_rx += 1;
-                if expect_rx > '9' as u8 {
-                    expect_rx = '0' as u8;
-                }
-                rx_buf.push_back(rx_val);
+                expect_rx = rx_rng.next_u32();
             }
         }
-        drop(serial);
-        unsafe {
-            uie::set_uext();
-            uie::set_usoft();
-            uie::set_utimer();
+
+        if HAS_INTR.load(Relaxed) {
+            serial.interrupt_handler();
+            HAS_INTR.store(false, Relaxed);
+            Plic::complete(get_context(hart_id(), 'U'), uart_irqn);
         }
-        // for _ in 0..100 {}
-        yield_();
     }
     unsafe {
         uie::clear_uext();
@@ -258,18 +247,12 @@ fn user_intr_test() -> (usize, usize, usize) {
         uie::clear_utimer();
     }
 
-    if uart_irqn == 14 {
+    if uart_irqn == 14 || uart_irqn == 6 {
         sleep(500);
-        // println!("rx buf:");
-        // for ch in rx_buf.iter() {
-        //     print!("{}", *ch as char);
-        // }
-        // println!("");
     }
-    let serial = INTR_SERIAL.lock();
     println!(
-        "[uart load] Intr count: {}, Tx: {}, Rx: {}",
-        serial.intr_count, serial.tx_intr_count, serial.rx_intr_count
+        "[uart load] Intr count: {}, Tx: {}, Rx: {}, err pos: {}",
+        serial.intr_count, serial.tx_intr_count, serial.rx_intr_count, err_pos,
     );
     (serial.rx_count, serial.tx_count, error_count)
 }
@@ -318,8 +301,11 @@ mod user_trap {
         //     println!("[uart load] user external interrupt, irq: {}", irq);
         // }
         if irq == UART_IRQN.load(Relaxed) {
-            INTR_SERIAL.lock().interrupt_handler();
+            HAS_INTR.store(true, Relaxed);
+        } else {
+            println!("[uart load] Unknown UEI!, irq: {}", irq);
         }
+        // println!("[uart load] UEI fin");
     }
 
     #[no_mangle]
