@@ -3,8 +3,8 @@ use core::convert::Infallible;
 use embedded_hal::serial::{Read, Write};
 pub use serial_config::*;
 
-pub const DEFAULT_TX_BUFFER_SIZE: usize = 100;
-pub const DEFAULT_RX_BUFFER_SIZE: usize = 100;
+pub const DEFAULT_TX_BUFFER_SIZE: usize = 1000;
+pub const DEFAULT_RX_BUFFER_SIZE: usize = 1000;
 
 #[cfg(feature = "board_qemu")]
 mod serial_config {
@@ -104,7 +104,9 @@ impl BufferedSerial {
                             self.rx_buffer.push_back(ch);
                             self.rx_count += 1;
                         } else {
-                            println!("[USER UART] Serial rx buffer overflow!");
+                            // println!("[USER UART] Serial rx buffer overflow!");
+                            hardware.disable_received_data_available_interrupt();
+                            break;
                         }
                     }
                 }
@@ -143,15 +145,6 @@ impl Write<u8> for BufferedSerial {
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
         let serial = &mut self.hardware;
-        // if serial.is_transmitter_holding_register_empty() {
-        //     for _ in 0..FIFO_DEPTH {
-        //         if let Some(ch) = self.tx_buffer.pop_front() {
-        //             serial.write_byte(ch);
-        //             self.tx_count += 1;
-        //         }
-        //     }
-        // }
-
         if self.tx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
             self.tx_buffer.push_back(word);
             if !serial.is_transmitter_holding_register_empty_interrupt_enabled() {
@@ -161,23 +154,8 @@ impl Write<u8> for BufferedSerial {
             // println!("[USER SERIAL] Tx buffer overflow!");
             return Err(nb::Error::WouldBlock);
         }
-
         Ok(())
     }
-
-    // #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
-    // fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
-    //     let serial = &mut self.hardware;
-    //     while self.tx_fifo_count >= FIFO_DEPTH {
-    //         if serial.lsr().contains(LSR::THRE) {
-    //             self.tx_fifo_count = 0;
-    //         }
-    //     }
-    //     serial.write_byte(word);
-    //     self.tx_count += 1;
-    //     self.tx_fifo_count += 1;
-    //     Ok(())
-    // }
 
     fn try_flush(&mut self) -> nb::Result<(), Self::Error> {
         todo!()
@@ -189,19 +167,25 @@ impl Read<u8> for BufferedSerial {
 
     fn try_read(&mut self) -> nb::Result<u8, Self::Error> {
         if let Some(ch) = self.rx_buffer.pop_front() {
+            let serial = &mut self.hardware;
+            if !serial.is_received_data_available_interrupt_enabled() {
+                serial.enable_received_data_available_interrupt();
+            }
             Ok(ch)
         } else {
-            // #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
-            // {
-            //     // Drain UART Rx FIFO
-            //     while let Some(ch_read) = self.hardware.read_byte() {
-            //         self.rx_buffer.push_back(ch_read);
-            //         self.rx_count += 1;
-            //     }
-            // }
-            // self.rx_buffer.pop_front().ok_or(nb::Error::WouldBlock)
             Err(nb::Error::WouldBlock)
         }
+    }
+}
+
+impl Drop for BufferedSerial {
+    fn drop(&mut self) {
+        let hardware = &mut self.hardware;
+        hardware.write_ier(0);
+        let _ = hardware.read_msr();
+        let _ = hardware.read_lsr();
+        // reset Rx & Tx FIFO, disable FIFO
+        hardware.write_fcr(0b00_000_11_0);
     }
 }
 
@@ -269,5 +253,16 @@ impl Read<u8> for PollingSerial {
         } else {
             Err(nb::Error::WouldBlock)
         }
+    }
+}
+
+impl Drop for PollingSerial {
+    fn drop(&mut self) {
+        let hardware = &mut self.hardware;
+        hardware.write_ier(0);
+        let _ = hardware.read_msr();
+        let _ = hardware.read_lsr();
+        // reset Rx & Tx FIFO, disable FIFO
+        hardware.write_fcr(0b00_000_11_0);
     }
 }
