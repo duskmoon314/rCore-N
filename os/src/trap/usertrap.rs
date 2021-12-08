@@ -30,14 +30,15 @@ pub enum UserTrapError {
 }
 
 impl UserTrapInfo {
-    // caller of this function should check wheter user interrupt is enabled
-    pub unsafe fn push_trap_record(
-        &mut self,
-        trap_record: UserTrapRecord,
-    ) -> Result<(), UserTrapError> {
-        self.get_trap_queue_mut()
-            .enqueue(trap_record)
-            .or(Err(UserTrapError::TrapBufferFull))
+    pub fn push_trap_record(&mut self, trap_record: UserTrapRecord) -> Result<(), UserTrapError> {
+        let res = self.get_trap_queue_mut().enqueue(trap_record);
+        match res {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                warn!("[push trap record] User TrapBufferFull!");
+                Err(UserTrapError::TrapBufferFull)
+            }
+        }
     }
 
     pub fn enable_user_ext_int(&self) {
@@ -102,11 +103,12 @@ impl UserTrapInfo {
             let s_context = get_context(hart_id, 'S');
             let u_context = get_context(hart_id, 'U');
             for (device_id, _) in &self.devices {
-                Plic::enable(u_context, *device_id);
-                Plic::claim(u_context);
-                Plic::complete(u_context, *device_id);
+                // Plic::enable(u_context, *device_id);
+                // Plic::claim(u_context);
+                // Plic::complete(u_context, *device_id);
                 Plic::disable(u_context, *device_id);
                 Plic::enable(s_context, *device_id);
+                Plic::complete(s_context, *device_id);
                 int_map.remove(device_id);
             }
         }
@@ -130,11 +132,9 @@ lazy_static! {
 }
 
 pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<(), UserTrapError> {
-    trace!(
+    debug!(
         "[push trap record] pid: {}, cause: {}, message: {}",
-        pid,
-        trap_record.cause,
-        trap_record.message
+        pid, trap_record.cause, trap_record.message
     );
     if let Some(tcb) = crate::task::find_task(pid) {
         let mut tcb_inner = tcb.acquire_inner_lock();
@@ -143,7 +143,7 @@ pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<(), U
             // return Err(UserTrapError::TrapDisabled);
         }
         if let Some(trap_info) = &mut tcb_inner.user_trap_info {
-            unsafe { trap_info.push_trap_record(trap_record) }
+            trap_info.push_trap_record(trap_record)
         } else {
             warn!("[push trap record] User trap uninitialized!");
             Err(UserTrapError::TrapUninitialized)
