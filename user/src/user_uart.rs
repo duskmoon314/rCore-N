@@ -98,8 +98,6 @@ impl BufferedSerial {
                     // println!("[SERIAL] Received data available");
                     self.rx_intr_count += 1;
                     while let Some(ch) = hardware.read_byte() {
-                        // let _ = self.rx_buffer.push_back(ch);
-                        // self.rx_count += 1;
                         if self.rx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
                             self.rx_buffer.push_back(ch);
                             self.rx_count += 1;

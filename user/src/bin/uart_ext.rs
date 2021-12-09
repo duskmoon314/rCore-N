@@ -82,7 +82,7 @@ pub fn main() -> i32 {
             uie::set_utimer();
         }
         // for _ in 0..1000 {}
-        yield_();
+        // yield_();
     }
 }
 

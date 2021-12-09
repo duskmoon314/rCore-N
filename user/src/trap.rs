@@ -5,7 +5,7 @@ pub const PAGE_SIZE: usize = 0x1000;
 pub const TRAMPOLINE: usize = usize::MAX - PAGE_SIZE + 1;
 pub const TRAP_CONTEXT: usize = TRAMPOLINE - PAGE_SIZE;
 pub const USER_TRAP_BUFFER: usize = TRAP_CONTEXT - PAGE_SIZE;
-const MAX_USER_TRAP_NUM: usize = 64;
+const MAX_USER_TRAP_NUM: usize = 128;
 
 use rv_plic::PLIC;
 pub const PLIC_BASE: usize = 0xc00_0000;
