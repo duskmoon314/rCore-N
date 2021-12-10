@@ -209,7 +209,7 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
                     let claim_addr = Plic::context_address(plic::get_context(hart_id, 'U'));
                     if inner
                         .memory_set
-                        .mmio_map(claim_addr, claim_addr + crate::config::PAGE_SIZE, 0b11)
+                        .mmio_map(claim_addr, crate::config::PAGE_SIZE, 0b11)
                         .is_err()
                     {
                         warn!("[syscall claim] map plic claim reg failed!");
@@ -224,7 +224,7 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
                     let base_address = uart::get_base_addr_from_irq(device_id);
                     match inner.memory_set.mmio_map(
                         base_address,
-                        base_address + uart::SERIAL_ADDRESS_STRIDE,
+                        uart::SERIAL_ADDRESS_STRIDE,
                         0x3,
                     ) {
                         Ok(_) => base_address as isize,
@@ -236,7 +236,7 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
                     let base_address = uart::get_base_addr_from_irq(device_id);
                     match inner.memory_set.mmio_map(
                         base_address,
-                        base_address + uart::SERIAL_ADDRESS_STRIDE,
+                        uart::SERIAL_ADDRESS_STRIDE,
                         0x3,
                     ) {
                         Ok(_) => base_address as isize,

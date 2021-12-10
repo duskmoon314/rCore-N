@@ -346,15 +346,15 @@ impl MemorySet {
         Ok(len as isize)
     }
 
-    pub fn mmio_map(&mut self, start: usize, end: usize, port: usize) -> Result<isize, isize> {
-        if port & !7 != 0 || port & 7 == 0 || (end - start) > 1 << 30 {
+    pub fn mmio_map(&mut self, start: usize, len: usize, port: usize) -> Result<isize, isize> {
+        if port & !7 != 0 || port & 7 == 0 || len > 1 << 30 {
             Err(-1)
         } else {
             let start_va: VirtAddr = VirtAddr::from(start);
             if start_va != start_va.floor().into() {
                 return Err(-1);
             }
-            let end_va: VirtAddr = VirtAddr::from(end).ceil().into();
+            let end_va: VirtAddr = VirtAddr::from(start + len).ceil().into();
 
             if self.is_mapped_area(start_va, end_va) {
                 return Err(-1);
@@ -372,13 +372,12 @@ impl MemorySet {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn mmio_unmap(&mut self, start: usize, end: usize) -> Result<isize, isize> {
+    pub fn mmio_unmap(&mut self, start: usize, len: usize) -> Result<isize, isize> {
         let mut start_va: VirtAddr = VirtAddr::from(start);
         if start_va != start_va.floor().into() {
             return Err(-1);
         }
-        let end_va: VirtAddr = VirtAddr::from(end).ceil().into();
+        let end_va: VirtAddr = VirtAddr::from(start + len).ceil().into();
 
         let mut to_unmap: Vec<usize> = Vec::new();
 
@@ -411,7 +410,7 @@ impl MemorySet {
             self.areas.remove(i);
         }
 
-        Ok((end - start) as isize)
+        Ok(len as isize)
     }
 
     pub fn recycle_data_pages(&mut self) {
