@@ -39,6 +39,9 @@ pub fn suspend_current_and_run_next() {
 }
 
 pub fn exit_current_and_run_next(exit_code: i32) {
+    // ++++++ hold initproc PCB lock here
+    let mut initproc_inner = INITPROC.acquire_inner_lock();
+
     // take from Processor
     let task = take_current_task().unwrap();
     // **** hold current PCB lock
@@ -64,14 +67,11 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     inner.exit_code = exit_code;
     // do not move to its parent but under initproc
 
-    // ++++++ hold initproc PCB lock here
-    {
-        let mut initproc_inner = INITPROC.acquire_inner_lock();
-        for child in inner.children.iter() {
-            child.acquire_inner_lock().parent = Some(Arc::downgrade(&INITPROC));
-            initproc_inner.children.push(child.clone());
-        }
+    for child in inner.children.iter() {
+        child.acquire_inner_lock().parent = Some(Arc::downgrade(&INITPROC));
+        initproc_inner.children.push(child.clone());
     }
+    drop(initproc_inner);
     // ++++++ release parent PCB lock here
 
     inner.children.clear();
