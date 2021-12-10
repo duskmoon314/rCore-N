@@ -62,6 +62,9 @@ pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
             //     "[user trap] Received {} trap from kernel.",
             //     trap_queue.len()
             // );
+            unsafe {
+                uip::clear_usoft();
+            }
             while let Some(trap_record) = trap_queue.dequeue() {
                 let cause = trap_record.cause;
                 let msg = trap_record.message;
@@ -75,9 +78,6 @@ pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
                 } else if ucause::Interrupt::from(cause) == ucause::Interrupt::UserTimer {
                     timer_intr_handler(msg);
                 }
-            }
-            unsafe {
-                uip::clear_usoft();
             }
         }
         ucause::Trap::Interrupt(ucause::Interrupt::UserExternal) => {
