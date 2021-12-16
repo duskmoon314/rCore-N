@@ -25,15 +25,18 @@ impl TaskPool {
         self.scheduler.add(task);
     }
 
+    #[allow(unused)]
     pub fn remove(&mut self, task: Arc<TaskControlBlock>) {
         self.scheduler.remove(&task);
     }
 
+    #[allow(unused)]
     pub fn wake(&mut self, task: Arc<TaskControlBlock>) {
         self.sleeping_tasks.remove(&task);
         self.scheduler.add(task);
     }
 
+    #[allow(unused)]
     pub fn sleep(&mut self, task: Arc<TaskControlBlock>) {
         self.scheduler.remove(&task);
         self.sleeping_tasks.insert(task);
@@ -43,6 +46,7 @@ impl TaskPool {
         self.scheduler.fetch()
     }
 
+    #[allow(unused)]
     pub fn prioritize(&mut self, pid: usize) {
         self.scheduler.prioritize(pid);
     }
@@ -58,6 +62,7 @@ pub fn fetch_task() -> Option<Arc<TaskControlBlock>> {
     TASK_POOL.lock().fetch()
 }
 
+#[allow(unused)]
 pub fn prioritize_task(pid: usize) {
     TASK_POOL.lock().prioritize(pid);
 }

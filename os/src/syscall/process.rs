@@ -134,13 +134,14 @@ pub fn sys_spawn(file: *const u8) -> isize {
     match current_task.spawn(file) {
         Ok(new_task) => {
             let new_pid = new_task.pid.0;
-            let trap_cx = new_task.acquire_inner_lock().get_trap_cx();
-            trap_cx.x[10] = 0;
             add_task(new_task);
             debug!("new_task via spawn {:?}", new_pid);
             new_pid as isize
         }
-        Err(_) => -1,
+        Err(_) => {
+            warn!("spawn failed!");
+            -1
+        }
     }
 }
 
@@ -222,11 +223,10 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
                 #[cfg(feature = "board_qemu")]
                 13 | 14 | 15 => {
                     let base_address = uart::get_base_addr_from_irq(device_id);
-                    match inner.memory_set.mmio_map(
-                        base_address,
-                        uart::SERIAL_ADDRESS_STRIDE,
-                        0x3,
-                    ) {
+                    match inner
+                        .memory_set
+                        .mmio_map(base_address, uart::SERIAL_ADDRESS_STRIDE, 0x3)
+                    {
                         Ok(_) => base_address as isize,
                         Err(_) => -2,
                     }
@@ -234,11 +234,10 @@ pub fn sys_claim_ext_int(device_id: usize) -> isize {
                 #[cfg(feature = "board_lrv")]
                 5 | 6 | 7 => {
                     let base_address = uart::get_base_addr_from_irq(device_id);
-                    match inner.memory_set.mmio_map(
-                        base_address,
-                        uart::SERIAL_ADDRESS_STRIDE,
-                        0x3,
-                    ) {
+                    match inner
+                        .memory_set
+                        .mmio_map(base_address, uart::SERIAL_ADDRESS_STRIDE, 0x3)
+                    {
                         Ok(_) => base_address as isize,
                         Err(_) => -2,
                     }

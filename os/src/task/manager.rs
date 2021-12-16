@@ -16,6 +16,7 @@ impl TaskManager {
     pub fn add(&mut self, task: Arc<TaskControlBlock>) {
         self.ready_queue.push_back(task);
     }
+    #[allow(unused)]
     pub fn remove(&mut self, task: &Arc<TaskControlBlock>) {
         for (idx, task_item) in self.ready_queue.iter().enumerate() {
             if *task_item == *task {
@@ -29,6 +30,7 @@ impl TaskManager {
         self.ready_queue.pop_front()
     }
 
+    #[allow(unused)]
     pub fn prioritize(&mut self, pid: usize) {
         let q = &mut self.ready_queue;
         if q.is_empty() || q.len() == 1 {
