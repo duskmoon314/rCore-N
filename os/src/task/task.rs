@@ -27,6 +27,7 @@ pub struct TaskControlBlock {
 pub struct TaskControlBlockInner {
     pub trap_cx_ppn: PhysPageNum,
     pub base_size: usize,
+    pub task_cx: TaskContext,
     pub task_cx_ptr: usize,
     pub user_trap_info: Option<UserTrapInfo>,
     pub task_status: TaskStatus,
@@ -50,6 +51,11 @@ impl Debug for TaskControlBlockInner {
 }
 
 impl TaskControlBlockInner {
+    pub fn get_task_cx_ptr(&mut self) -> *mut TaskContext {
+        &mut self.task_cx as *mut TaskContext
+    }
+    #[deprecated]
+    #[allow(unused)]
     pub fn get_task_cx_ptr2(&self) -> *const usize {
         &self.task_cx_ptr as *const usize
     }
@@ -134,7 +140,6 @@ impl TaskControlBlockInner {
         if self.is_user_trap_enabled() {
             if let Some(trap_info) = &mut self.user_trap_info {
                 // if trap_info.user_trap_record_num > 0 {
-                //     trace!("restore {} user trap", trap_info.user_trap_record_num);
                 //     uscratch::write(trap_info.user_trap_record_num as usize);
                 //     trap_info.user_trap_record_num = 0;
                 //     unsafe {
@@ -142,6 +147,7 @@ impl TaskControlBlockInner {
                 //     }
                 // }
                 if !trap_info.get_trap_queue().is_empty() {
+                    trace!("restore {} user trap", trap_info.user_trap_record_num());
                     uscratch::write(trap_info.user_trap_record_num());
                     unsafe {
                         uip::set_usoft();
@@ -168,7 +174,8 @@ impl TaskControlBlock {
         let kernel_stack = KernelStack::new(&pid_handle);
         let kernel_stack_top = kernel_stack.get_top();
         // push a task context which goes to trap_return to the top of kernel stack
-        let task_cx_ptr = kernel_stack.push_on_top(TaskContext::goto_trap_return());
+        let task_cx = TaskContext::goto_trap_return(kernel_stack_top);
+        let task_cx_ptr = kernel_stack.push_on_top(task_cx.clone());
         trace!("new task cx ptr: {:#x?}", task_cx_ptr as usize);
         let task_control_block = Arc::new(TaskControlBlock {
             pid: pid_handle,
@@ -176,6 +183,7 @@ impl TaskControlBlock {
             inner: Mutex::new(TaskControlBlockInner {
                 trap_cx_ppn,
                 base_size: user_sp,
+                task_cx,
                 task_cx_ptr: task_cx_ptr as usize,
                 user_trap_info: None,
                 task_status: TaskStatus::Ready,
@@ -254,7 +262,8 @@ impl TaskControlBlock {
         let kernel_stack = KernelStack::new(&pid_handle);
         let kernel_stack_top = kernel_stack.get_top();
         // push a goto_trap_return task_cx on the top of kernel stack
-        let task_cx_ptr = kernel_stack.push_on_top(TaskContext::goto_trap_return());
+        let task_cx = TaskContext::goto_trap_return(kernel_stack_top);
+        let task_cx_ptr = kernel_stack.push_on_top(task_cx.clone());
         debug!("forked task cx ptr: {:#x?}", task_cx_ptr as usize);
         // copy fd table
         let mut new_fd_table: Vec<Option<Arc<dyn File + Send + Sync>>> = Vec::new();
@@ -280,6 +289,7 @@ impl TaskControlBlock {
             inner: Mutex::new(TaskControlBlockInner {
                 trap_cx_ppn,
                 base_size: parent_inner.base_size,
+                task_cx,
                 task_cx_ptr: task_cx_ptr as usize,
                 user_trap_info,
                 task_status: TaskStatus::Ready,
@@ -327,7 +337,8 @@ impl TaskControlBlock {
             let pid_handle = pid_alloc();
             let kernel_stack = KernelStack::new(&pid_handle);
             let kernel_stack_top = kernel_stack.get_top();
-            let task_cx_ptr = kernel_stack.push_on_top(TaskContext::goto_trap_return());
+            let task_cx = TaskContext::goto_trap_return(kernel_stack_top);
+            let task_cx_ptr = kernel_stack.push_on_top(task_cx.clone());
             trace!("spawned task cx ptr: {:#x?}", task_cx_ptr as usize);
 
             let task_control_block = Arc::new(TaskControlBlock {
@@ -336,6 +347,7 @@ impl TaskControlBlock {
                 inner: Mutex::new(TaskControlBlockInner {
                     trap_cx_ppn,
                     base_size: user_sp,
+                    task_cx,
                     task_cx_ptr: task_cx_ptr as usize,
                     user_trap_info: None,
                     task_status: TaskStatus::Ready,

@@ -11,7 +11,7 @@ use alloc::sync::Arc;
 use lazy_static::*;
 
 use spin::Mutex;
-use switch::__switch;
+use switch::__switch2;
 use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
@@ -31,11 +31,11 @@ pub fn suspend_current_and_run_next() {
     let task = current_task().unwrap();
     let mut task_inner = task.acquire_inner_lock();
     task_inner.time_intr_count += 1;
-    let task_cx_ptr2 = task_inner.get_task_cx_ptr2();
+    let task_cx_ptr = task_inner.get_task_cx_ptr();
     drop(task_inner);
 
     // jump to scheduling cycle
-    schedule(task_cx_ptr2);
+    schedule(task_cx_ptr);
 }
 
 pub fn exit_current_and_run_next(exit_code: i32) {
@@ -83,8 +83,8 @@ pub fn exit_current_and_run_next(exit_code: i32) {
     drop(task);
     drop(wl);
     // we do not have to save task context
-    let _unused: usize = 0;
-    schedule(&_unused as *const _);
+    let mut _unused = Default::default();
+    schedule(&mut _unused as *mut _);
 
     // let task = current_task().unwrap();
     // let task_inner = task.acquire_inner_lock();
