@@ -372,6 +372,7 @@ impl MemorySet {
         }
     }
 
+    #[allow(unused)]
     pub fn mmio_unmap(&mut self, start: usize, len: usize) -> Result<isize, isize> {
         let mut start_va: VirtAddr = VirtAddr::from(start);
         if start_va != start_va.floor().into() {

@@ -155,6 +155,7 @@ pub fn current_task() -> Option<Arc<TaskControlBlock>> {
     PROCESSORS[hart_id()].current()
 }
 
+#[allow(unused)]
 pub fn current_tasks() -> Vec<Option<Arc<TaskControlBlock>>> {
     PROCESSORS
         .iter()
