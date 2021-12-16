@@ -50,7 +50,7 @@ impl PidAllocator {
             "pid {} has been deallocated!",
             pid
         );
-        self.recycled.push(pid);
+        // self.recycled.push(pid);
     }
 }
 
