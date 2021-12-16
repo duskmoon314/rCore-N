@@ -118,11 +118,15 @@ kernelvec:
         sd t5, 232(sp)
         sd t6, 240(sp)
 
+        addi sp, sp, -8
+        sd zero, 0(sp)
+        mv a0, sp
 	// call the C trap handler in trap.c
         call trap_from_kernel
 
 kernelret:
         // restore registers.
+        addi sp, sp, 8
         ld ra, 0(sp)
         ld sp, 8(sp)
         ld gp, 16(sp)

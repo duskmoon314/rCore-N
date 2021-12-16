@@ -49,9 +49,14 @@ fn set_user_trap_entry() {
 #[no_mangle]
 pub fn trap_handler() -> ! {
     set_kernel_trap_entry();
-    // debug!("trap from user");
     let scause = scause::read();
     let stval = stval::read();
+    // trace!(
+    //     "trap from user, cause: {:?}, stval: {}, trap frame: {:x?}",
+    //     scause.cause(),
+    //     stval,
+    //     current_trap_cx()
+    // );
     match scause.cause() {
         Trap::Exception(Exception::UserEnvCall) => {
             // jump to next instruction anyway
@@ -91,26 +96,22 @@ pub fn trap_handler() -> ! {
             let mut timer_map = TIMER_MAP[hart_id()].lock();
             while let Some((_, pid)) = timer_map.pop_first() {
                 if let Some((next_time, _)) = timer_map.first_key_value() {
-                    // if *next_time < current_time {
-                    //     continue;
-                    // } else {
-                    //     set_timer(*next_time);
-                    // }
                     set_timer(*next_time);
                 }
                 drop(timer_map);
                 if pid == 0 {
                     set_next_trigger();
-                    // static mut CNT: u8 = 0;
+                    // static mut CNT: usize = 0;
                     // unsafe {
                     //     CNT += 1;
-                    //     if CNT > 200 {
-                    //         trace!("kernel tick");
+                    //     if CNT > 6000 {
+                    //         debug!("kernel tick");
                     //         CNT = 0;
                     //     }
                     // }
                     suspend_current_and_run_next();
                 } else if pid == current_task().unwrap().pid.0 {
+                    debug!("set UTIP for pid {}", pid);
                     unsafe {
                         sip::set_utimer();
                     }
@@ -158,7 +159,7 @@ pub fn trap_return() -> ! {
         fn __restore();
     }
     let restore_va = __restore as usize - __alltraps as usize + TRAMPOLINE;
-    // trace!("return to user");
+    // trace!("return to user, trap frame: {:x?}", current_trap_cx());
     unsafe {
         sstatus::set_spie();
         sstatus::set_spp(sstatus::SPP::User);
@@ -169,7 +170,7 @@ pub fn trap_return() -> ! {
 }
 
 #[no_mangle]
-pub extern "C" fn trap_from_kernel() {
+pub extern "C" fn trap_from_kernel(cx: &mut TrapContext) {
     let scause = scause::read();
     let stval = stval::read();
     let sepc = sepc::read();
@@ -194,11 +195,12 @@ pub extern "C" fn trap_from_kernel() {
         }
         _ => {
             error!(
-                "Unsupported trap {:?}, stval = {:#x}, sepc = {:#x}, sstatus = {:#x?}!",
+                "Unsupported trap {:?}! stval = {:#x}, sepc = {:#x}, sstatus = {:#x?}, trap frame: {:x?}",
                 scause.cause(),
                 stval,
                 sepc,
                 sstatus,
+                *cx
             );
             panic!("a trap {:?} from kernel!", scause::read().cause());
         }
