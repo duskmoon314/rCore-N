@@ -1,6 +1,6 @@
 QEMU := "../../qemu-build/riscv64-softmmu/qemu-system-riscv64"
 # machine, supervisor, user, echo1, echo2
-SERIAL_FLAGS := "-serial /dev/pts/4 -serial /dev/pts/6 -serial /dev/pts/5 -serial tcp::23334,server,nowait -serial tcp:localhost:23334"
+SERIAL_FLAGS := "-serial /dev/pts/6 -serial /dev/pts/11 -serial /dev/pts/9 -serial tcp::23334,server,nowait -serial tcp:localhost:23334"
 
 TARGET := "riscv64imac-unknown-none-elf"
 MODE := "release"
@@ -37,10 +37,10 @@ build_lrv: user_lrv
     rm src/linker.ld
 
 disasm: build
-    {{OBJDUMP}} -S {{KERNEL_ELF}} > {{KERNEL_ASM}}
+    {{OBJDUMP}} -S -t {{KERNEL_ELF}} > {{KERNEL_ASM}}
 
 disasm_lrv: build_lrv
-    {{OBJDUMP}} -S {{KERNEL_ELF}} > {{KERNEL_ASM}}
+    {{OBJDUMP}} -S -t {{KERNEL_ELF}} > {{KERNEL_ASM}}
 
 run: build
     {{QEMU}} -machine virt -smp 4 {{SERIAL_FLAGS}} -nographic -bios ./rustsbi-qemu.bin -device loader,file={{KERNEL_BIN}},addr=0x80200000

@@ -8,6 +8,7 @@ use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cell::RefCell;
+use riscv::register::cycle;
 
 use lazy_static::*;
 lazy_static! {
@@ -80,6 +81,7 @@ impl Processor {
             next_task_cx_ptr,
             task_cx
         );
+        task_inner.last_cpu_cycle = cycle::read();
         // release
         drop(task_inner);
         self.inner.borrow_mut().current = Some(task);
@@ -99,6 +101,7 @@ impl Processor {
             if let Some(trap_info) = &task_inner.user_trap_info {
                 trap_info.disable_user_ext_int();
             }
+            task_inner.total_cpu_cycle_count += cycle::read() - task_inner.last_cpu_cycle;
             drop(task_inner);
             // ---- release current PCB lock
 

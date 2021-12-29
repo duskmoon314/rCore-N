@@ -39,6 +39,8 @@ pub struct TaskControlBlockInner {
     pub fd_table: Vec<Option<Arc<dyn File + Send + Sync>>>,
     pub mail_box: Arc<MailBox>,
     pub time_intr_count: usize,
+    pub total_cpu_cycle_count: usize,
+    pub last_cpu_cycle: usize,
 }
 
 impl Debug for TaskControlBlockInner {
@@ -206,6 +208,8 @@ impl TaskControlBlock {
                 ],
                 mail_box: Arc::new(MailBox::new()),
                 time_intr_count: 0,
+                total_cpu_cycle_count: 0,
+                last_cpu_cycle: 0,
             }),
         });
         add_task_2_map(task_control_block.getpid(), task_control_block.clone());
@@ -301,6 +305,8 @@ impl TaskControlBlock {
                 fd_table: new_fd_table,
                 mail_box: Arc::new(MailBox::new()),
                 time_intr_count: 0,
+                total_cpu_cycle_count: 0,
+                last_cpu_cycle: 0,
             }),
         });
         add_task_2_map(task_control_block.getpid(), task_control_block.clone());
@@ -370,6 +376,8 @@ impl TaskControlBlock {
                     ],
                     mail_box: Arc::new(MailBox::new()),
                     time_intr_count: 0,
+                    total_cpu_cycle_count: 0,
+                    last_cpu_cycle: 0,
                 }),
             });
             add_task_2_map(task_control_block.getpid(), task_control_block.clone());
