@@ -36,6 +36,7 @@ const BAUD_RATE: usize = 6250_000;
 const MAX_SHIFT: isize = 10;
 
 type Rng = Mutex<XorShiftRng>;
+type Hasher = blake3::Hasher;
 
 lazy_static! {
     static ref RX_RNG: Rng = Mutex::new(XorShiftRng::seed_from_u64(RX_SEED.load(Relaxed) as u64));
@@ -140,6 +141,7 @@ fn kernel_driver_test() -> (usize, usize, usize) {
 }
 
 fn user_polling_test() -> (usize, usize, usize) {
+    let mut hasher = Hasher::new();
     let uart_irqn = UART_IRQN.load(Relaxed);
     let claim_res = claim_ext_int(uart_irqn as usize);
     let mut serial = PollingSerial::new(get_base_addr_from_irq(UART_IRQN.load(Relaxed)));
@@ -158,6 +160,7 @@ fn user_polling_test() -> (usize, usize, usize) {
     while !(IS_TIMEOUT.load(Relaxed)) {
         for _ in 0..HALF_FIFO_DEPTH {
             serial.try_write(next_tx as u8).unwrap();
+            hasher.update(&[next_tx as u8]);
             next_tx = tx_rng.next_u32();
         }
         for _ in 0..HALF_FIFO_DEPTH {
@@ -171,6 +174,7 @@ fn user_polling_test() -> (usize, usize, usize) {
                     expect_rx = rx_rng.next_u32();
                     max_shift -= 1;
                 }
+                hasher.update(&[rx_val]);
                 expect_rx = rx_rng.next_u32();
             }
         }
@@ -189,6 +193,7 @@ fn user_intr_test() -> (usize, usize, usize) {
         uie::clear_usoft();
         uie::clear_utimer();
     }
+    let mut hasher = Hasher::new();
     let uart_irqn = UART_IRQN.load(Relaxed);
     let claim_res = claim_ext_int(uart_irqn as usize);
     let mut serial = BufferedSerial::new(get_base_addr_from_irq(uart_irqn));
@@ -216,6 +221,7 @@ fn user_intr_test() -> (usize, usize, usize) {
     while !(IS_TIMEOUT.load(Relaxed)) {
         for _ in 0..HALF_FIFO_DEPTH {
             if let Ok(()) = serial.try_write(next_tx as u8) {
+                hasher.update(&[next_tx as u8]);
                 next_tx = tx_rng.next_u32();
             }
         }
@@ -231,6 +237,7 @@ fn user_intr_test() -> (usize, usize, usize) {
                     max_shift -= 1;
                     expect_rx = rx_rng.next_u32();
                 }
+                hasher.update(&[rx_val]);
                 expect_rx = rx_rng.next_u32();
             }
         }

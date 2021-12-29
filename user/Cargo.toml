@@ -22,6 +22,9 @@ array-init = "2.0.0"
 rand_xorshift = "0.3.0"
 rand_core = "0.6.3"
 heapless = "0.7.5"
+blake2 = { version = "0.10", default-features = false }
+blake3 = { version = "1.2.0", default-features = false }
+sha2 = { version = "0.10", default-features = false }
 
 [features]
 board_qemu = ["uart8250"]
