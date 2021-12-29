@@ -1,3 +1,4 @@
+use core::arch::{asm, global_asm};
 use heapless::spsc::Queue;
 use riscv::register::{ucause, uepc, uip, ustatus::Ustatus, utval};
 

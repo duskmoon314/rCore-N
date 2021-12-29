@@ -5,6 +5,7 @@ use crate::plic::Plic;
 use crate::task::hart_id;
 use crate::{mm::PhysPageNum, plic::get_context};
 use alloc::{collections::BTreeMap, vec::Vec};
+use core::arch::asm;
 use heapless::spsc::Queue;
 use lazy_static::*;
 use spin::Mutex;

@@ -1,7 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(global_asm)]
-#![feature(asm)]
 #![feature(panic_info_message)]
 #![feature(alloc_error_handler)]
 #![feature(map_first_last)]
@@ -16,6 +14,7 @@ extern crate bitflags;
 extern crate log;
 
 use crate::{config::CPU_NUM, mm::init_kernel_space, sbi::send_ipi};
+use core::arch::{asm, global_asm};
 
 #[macro_use]
 mod console;

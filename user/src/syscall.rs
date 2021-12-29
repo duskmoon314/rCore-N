@@ -1,4 +1,5 @@
 use crate::TimeVal;
+use core::arch::asm;
 
 const SYSCALL_DUP: usize = 24;
 const SYSCALL_OPEN: usize = 56;

@@ -6,6 +6,7 @@ use crate::config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::arch::asm;
 use lazy_static::*;
 use riscv::asm::sfence_vma_all;
 use riscv::register::satp;

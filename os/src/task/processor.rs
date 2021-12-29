@@ -7,6 +7,7 @@ use crate::config::CPU_NUM;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::arch::asm;
 use core::cell::RefCell;
 use riscv::register::cycle;
 

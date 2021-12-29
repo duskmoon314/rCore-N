@@ -1,6 +1,4 @@
 #![no_std]
-#![feature(asm)]
-#![feature(global_asm)]
 #![feature(linkage)]
 #![feature(panic_info_message)]
 #![feature(alloc_error_handler)]
