@@ -41,7 +41,7 @@ impl File for Stdout {
 impl Write for Stdout {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for c in s.chars() {
-            serial_putchar(0, c as u8);
+            let _ = serial_putchar(0, c as u8);
         }
         Ok(())
     }

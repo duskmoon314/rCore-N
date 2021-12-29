@@ -24,13 +24,13 @@ pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
         if let Ok(buffers) = translated_byte_buffer(token, buf, len) {
             match file.write(UserBuffer::new(buffers)) {
                 Ok(write_len) => write_len as isize,
-                Err(_) => -1,
+                Err(_) => -2,
             }
         } else {
-            -1
+            -3
         }
     } else {
-        -1
+        -4
     }
 }
 
