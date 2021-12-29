@@ -24,10 +24,10 @@ bitflags! {
 
 #[no_mangle]
 pub fn main() -> i32 {
-    println!("[uart benchmark] Kernel mode driver benchmark begins.");
     let cpu_load_pid: [usize; CPU_LOAD_NUM] =
         array_init::array_init(|_| spawn("cpu_load\0") as usize);
     let mut exit_code: i32 = 0;
+    println!("[uart benchmark] Kernel mode driver benchmark begins.");
     let pid1 = spawn("uart_load\0") as usize;
     let pid2 = spawn("uart_load\0") as usize;
     sleep(1000);

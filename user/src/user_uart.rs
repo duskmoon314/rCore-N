@@ -86,9 +86,9 @@ impl BufferedSerial {
         let _ = hardware.read_lsr();
         hardware.write_mcr(0);
         hardware.init(100_000_000, baud_rate);
-        // Rx FIFO trigger level=8, reset Rx & Tx FIFO, enable FIFO
         hardware.enable_received_data_available_interrupt();
         self.rx_intr_enabled = true;
+        // Rx FIFO trigger level=8, reset Rx & Tx FIFO, enable FIFO
         hardware.write_fcr(0b10_000_11_1);
     }
 

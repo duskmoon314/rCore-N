@@ -96,45 +96,44 @@ fn kernel_driver_test() -> (usize, usize, usize) {
     let mut expect_rx = rx_rng.next_u32();
     let tx_fd = irq_to_serial_id(UART_IRQN.load(Relaxed)) + 1;
     let rx_fd = tx_fd;
+    let mut hasher = Hasher::new();
+
     // if tx_fd == 3 {
     //     println!(
     //         "[uart load] Kernel mode, tx fd: {}, rx_fd: {}, next_tx: {}, rx: {}",
     //         tx_fd, rx_fd, next_tx as u8, expect_rx as u8,
     //     );
     // }
-    let mut tx_buf = [0u8; HALF_FIFO_DEPTH];
-    let mut rx_buf = [0u8; 1];
-    while read(rx_fd, &mut rx_buf) != -1 {}
+    let mut tx_buf = [0u8; HALF_FIFO_DEPTH * 5];
+    let mut rx_buf = [0u8; HALF_FIFO_DEPTH * 5];
+    while read(rx_fd, &mut rx_buf) > 0 {}
     sleep(20);
     let time_us = get_time() * 1000;
     set_timer(time_us + TEST_TIME_US);
     while !(IS_TIMEOUT.load(Relaxed)) {
-        for i in 0..HALF_FIFO_DEPTH {
+        for i in 0..HALF_FIFO_DEPTH * 5 {
             tx_buf[i] = next_tx as u8;
+            hasher.update(&[next_tx as u8]);
             next_tx = tx_rng.next_u32();
         }
-        write(tx_fd, &tx_buf);
-        tx_count += HALF_FIFO_DEPTH;
-        let mut rx_fifo_count = 0;
-        while !(IS_TIMEOUT.load(Relaxed)) && rx_fifo_count < HALF_FIFO_DEPTH {
-            while !(IS_TIMEOUT.load(Relaxed)) && read(rx_fd, &mut rx_buf) == -1 {}
-            if rx_buf[0] != expect_rx as u8 {
-                // if error_count == 0 {
-                //     if tx_fd == 3 {
-                //         // delay to avoid mess in terminal
-                //         sleep(300);
-                //     }
-                //     println!(
-                //         "[uart load] fd {} error at {}: expect {}, received {}!",
-                //         rx_fd, rx_count, expect_rx as u8, rx_buf[0],
-                //     );
-                //     IS_TIMEOUT.store(true, Relaxed);
-                // }
-                error_count += 1;
+        let tx_fifo_count = write(tx_fd, &tx_buf);
+        if tx_fifo_count > 0 {
+            tx_count += tx_fifo_count as usize;
+        }
+
+        let rx_fifo_count = read(rx_fd, &mut rx_buf);
+        if rx_fifo_count > 0 {
+            for rx_val in &rx_buf[0..rx_fifo_count as usize] {
+                let mut max_shift = MAX_SHIFT;
+                while *rx_val != expect_rx as u8 && max_shift > 0 {
+                    error_count += 1;
+                    expect_rx = rx_rng.next_u32();
+                    max_shift -= 1;
+                }
+                hasher.update(&[*rx_val]);
+                expect_rx = rx_rng.next_u32();
             }
-            rx_count += 1;
-            expect_rx = rx_rng.next_u32();
-            rx_fifo_count += 1;
+            rx_count += rx_fifo_count as usize;
         }
     }
     (rx_count, tx_count, error_count)
