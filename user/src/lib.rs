@@ -1,6 +1,5 @@
 #![no_std]
 #![feature(asm)]
-#![feature(llvm_asm)]
 #![feature(global_asm)]
 #![feature(linkage)]
 #![feature(panic_info_message)]
@@ -179,7 +178,7 @@ pub fn waitpid(pid: usize, exit_code: &mut i32) -> isize {
 pub fn sleep(period_ms: usize) {
     let start = get_time();
     while get_time() < start + period_ms as isize {
-        sys_yield();
+        // sys_yield();
     }
 }
 

@@ -162,8 +162,8 @@ pub fn trap_return() -> ! {
     unsafe {
         sstatus::set_spie();
         sstatus::set_spp(sstatus::SPP::User);
-        llvm_asm!("fence.i" :::: "volatile");
-        llvm_asm!("jr $0" :: "r"(restore_va), "{a0}"(trap_cx_ptr), "{a1}"(user_satp) :: "volatile");
+        asm!("fence.i", "jr {}", in(reg) restore_va,
+             in("a0") trap_cx_ptr, in("a1") user_satp)
     }
     panic!("Unreachable in back_to_user!");
 }
