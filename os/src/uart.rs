@@ -57,6 +57,11 @@ pub struct BufferedSerial {
     pub rx_count: usize,
     pub tx_count: usize,
     pub intr_count: usize,
+    pub rx_intr_count: usize,
+    pub tx_intr_count: usize,
+    pub tx_fifo_count: usize,
+    rx_intr_enabled: bool,
+    tx_intr_enabled: bool,
 }
 
 impl BufferedSerial {
@@ -68,6 +73,11 @@ impl BufferedSerial {
             rx_count: 0,
             tx_count: 0,
             intr_count: 0,
+            rx_intr_count: 0,
+            tx_intr_count: 0,
+            tx_fifo_count: 0,
+            rx_intr_enabled: false,
+            tx_intr_enabled: false,
         }
     }
 
@@ -76,10 +86,11 @@ impl BufferedSerial {
         hardware.write_ier(0);
         let _ = hardware.read_msr();
         let _ = hardware.read_lsr();
+        hardware.write_mcr(0);
         hardware.init(100_000_000, baud_rate);
         hardware.enable_received_data_available_interrupt();
-        hardware.enable_transmitter_holding_register_empty_interrupt();
-        // Rx FIFO trigger level=4, reset Rx & Tx FIFO, enable FIFO
+        self.rx_intr_enabled = true;
+        // Rx FIFO trigger level=14, reset Rx & Tx FIFO, enable FIFO
         hardware.write_fcr(0b11_000_11_1);
     }
 
@@ -91,25 +102,29 @@ impl BufferedSerial {
             match int_type {
                 InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
                     // trace!("Received data available");
+                    self.rx_intr_count += 1;
                     while let Some(ch) = hardware.read_byte() {
                         if self.rx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
                             self.rx_buffer.push_back(ch);
                             self.rx_count += 1;
                         } else {
-                            warn!("Serial rx buffer overflow!");
+                            // warn!("Serial rx buffer overflow!");
                             hardware.disable_received_data_available_interrupt();
+                            self.rx_intr_enabled = false;
                             break;
                         }
                     }
                 }
                 InterruptType::TransmitterHoldingRegisterEmpty => {
                     // trace!("TransmitterHoldingRegisterEmpty");
+                    self.tx_intr_count += 1;
                     for _ in 0..FIFO_DEPTH {
                         if let Some(ch) = self.tx_buffer.pop_front() {
                             hardware.write_byte(ch);
                             self.tx_count += 1;
                         } else {
                             hardware.disable_transmitter_holding_register_empty_interrupt();
+                            self.tx_intr_enabled = false;
                             break;
                         }
                     }
@@ -136,17 +151,16 @@ impl Write<u8> for BufferedSerial {
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
         let serial = &mut self.hardware;
-
         if self.tx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
             self.tx_buffer.push_back(word);
-            if !serial.is_transmitter_holding_register_empty_interrupt_enabled() {
+            if !self.tx_intr_enabled {
                 serial.enable_transmitter_holding_register_empty_interrupt();
+                self.tx_intr_enabled = true;
             }
         } else {
-            warn!("Serial tx buffer overflow!");
+            // warn!("Serial tx buffer overflow!");
             return Err(nb::Error::WouldBlock);
         }
-
         Ok(())
     }
 
@@ -160,12 +174,13 @@ impl Read<u8> for BufferedSerial {
 
     fn try_read(&mut self) -> nb::Result<u8, Self::Error> {
         if let Some(ch) = self.rx_buffer.pop_front() {
-            let serial = &mut self.hardware;
-            if !serial.is_received_data_available_interrupt_enabled() {
-                serial.enable_received_data_available_interrupt();
-            }
             Ok(ch)
         } else {
+            let serial = &mut self.hardware;
+            if !self.rx_intr_enabled {
+                serial.enable_received_data_available_interrupt();
+                self.rx_intr_enabled = true;
+            }
             Err(nb::Error::WouldBlock)
         }
     }
@@ -249,8 +264,8 @@ pub fn handle_interrupt() {
 }
 
 #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
-pub fn serial_putchar(serial_id: usize, c: u8) {
-    let _ = BUFFERED_SERIAL[serial_id].lock().try_write(c);
+pub fn serial_putchar(serial_id: usize, c: u8) -> nb::Result<(), Infallible> {
+    BUFFERED_SERIAL[serial_id].lock().try_write(c)
 }
 
 #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
