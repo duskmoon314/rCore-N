@@ -58,6 +58,8 @@ pub struct BufferedSerial {
     pub rx_intr_count: usize,
     pub tx_intr_count: usize,
     pub tx_fifo_count: usize,
+    rx_intr_enabled: bool,
+    tx_intr_enabled: bool,
 }
 
 impl BufferedSerial {
@@ -72,6 +74,8 @@ impl BufferedSerial {
             rx_intr_count: 0,
             tx_intr_count: 0,
             tx_fifo_count: 0,
+            rx_intr_enabled: false,
+            tx_intr_enabled: false,
         }
     }
 
@@ -84,6 +88,7 @@ impl BufferedSerial {
         hardware.init(100_000_000, baud_rate);
         // Rx FIFO trigger level=8, reset Rx & Tx FIFO, enable FIFO
         hardware.enable_received_data_available_interrupt();
+        self.rx_intr_enabled = true;
         hardware.write_fcr(0b10_000_11_1);
     }
 
@@ -104,6 +109,7 @@ impl BufferedSerial {
                         } else {
                             // println!("[USER UART] Serial rx buffer overflow!");
                             hardware.disable_received_data_available_interrupt();
+                            self.rx_intr_enabled = false;
                             break;
                         }
                     }
@@ -117,6 +123,7 @@ impl BufferedSerial {
                             self.tx_count += 1;
                         } else {
                             hardware.disable_transmitter_holding_register_empty_interrupt();
+                            self.tx_intr_enabled = false;
                             break;
                         }
                     }
@@ -145,8 +152,9 @@ impl Write<u8> for BufferedSerial {
         let serial = &mut self.hardware;
         if self.tx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
             self.tx_buffer.push_back(word);
-            if !serial.is_transmitter_holding_register_empty_interrupt_enabled() {
+            if !self.tx_intr_enabled {
                 serial.enable_transmitter_holding_register_empty_interrupt();
+                self.tx_intr_enabled = true;
             }
         } else {
             // println!("[USER SERIAL] Tx buffer overflow!");
@@ -165,12 +173,13 @@ impl Read<u8> for BufferedSerial {
 
     fn try_read(&mut self) -> nb::Result<u8, Self::Error> {
         if let Some(ch) = self.rx_buffer.pop_front() {
-            let serial = &mut self.hardware;
-            if !serial.is_received_data_available_interrupt_enabled() {
-                serial.enable_received_data_available_interrupt();
-            }
             Ok(ch)
         } else {
+            let serial = &mut self.hardware;
+            if !self.rx_intr_enabled {
+                serial.enable_received_data_available_interrupt();
+                self.rx_intr_enabled = true;
+            }
             Err(nb::Error::WouldBlock)
         }
     }
