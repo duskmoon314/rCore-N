@@ -88,6 +88,13 @@ pub fn find_task(pid: usize) -> Option<Arc<TaskControlBlock>> {
         .task_table
         .get(&pid)
         .and_then(|weak| weak.upgrade())
+        .and_then(|strong| {
+            if strong.acquire_inner_lock().is_zombie() {
+                None
+            } else {
+                Some(strong)
+            }
+        })
 }
 
 /// Return (bottom, top) of a kernel stack in kernel space.
