@@ -180,6 +180,14 @@ pub fn sleep(period_ms: usize) {
     }
 }
 
+pub fn mailread(buf: &mut [u8]) -> isize {
+    sys_mailread(buf)
+}
+
+pub fn mailwrite(pid: usize, buf: &[u8]) -> isize {
+    sys_mailwrite(pid, buf)
+}
+
 pub fn init_user_trap() -> isize {
     sys_init_user_trap()
 }

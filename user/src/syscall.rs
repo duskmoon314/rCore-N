@@ -15,6 +15,8 @@ const SYSCALL_FORK: usize = 220;
 const SYSCALL_EXEC: usize = 221;
 const SYSCALL_WAITPID: usize = 260;
 const SYSCALL_SPAWN: usize = 400;
+const SYSCALL_MAILREAD: usize = 401;
+const SYSCALL_MAILWRITE: usize = 402;
 const SYSCALL_INIT_USER_TRAP: usize = 600;
 const SYSCALL_SEND_MSG: usize = 601;
 const SYSCALL_SET_TIMER: usize = 602;
@@ -92,6 +94,14 @@ pub fn sys_spawn(path: &str) -> isize {
 
 pub fn sys_waitpid(pid: isize, exit_code: *mut i32) -> isize {
     syscall(SYSCALL_WAITPID, [pid as usize, exit_code as usize, 0])
+}
+
+pub fn sys_mailread(buf: &mut [u8]) -> isize {
+    syscall(SYSCALL_MAILREAD, [buf.as_mut_ptr() as usize, buf.len(), 0])
+}
+
+pub fn sys_mailwrite(pid: usize, buf: &[u8]) -> isize {
+    syscall(SYSCALL_MAILWRITE, [pid, buf.as_ptr() as usize, buf.len()])
 }
 
 pub fn sys_init_user_trap() -> isize {

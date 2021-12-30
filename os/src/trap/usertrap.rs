@@ -142,17 +142,17 @@ pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<(), U
     if let Some(tcb) = crate::task::find_task(pid) {
         let mut tcb_inner = tcb.acquire_inner_lock();
         if !tcb_inner.is_user_trap_enabled() {
-            warn!("[push trap record] User trap disabled!");
+            // warn!("[push trap record] User trap disabled!");
             // return Err(UserTrapError::TrapDisabled);
         }
         if let Some(trap_info) = &mut tcb_inner.user_trap_info {
             let res = trap_info.push_trap_record(trap_record);
-            if let Running(task_hart_id) = tcb_inner.task_status {
-                if task_hart_id != hart_id() {
-                    let mask: usize = 1 << task_hart_id;
-                    send_ipi(&mask as *const _ as usize);
-                }
-            }
+            // if let Running(task_hart_id) = tcb_inner.task_status {
+            //     if task_hart_id != hart_id() {
+            //         let mask: usize = 1 << task_hart_id;
+            //         send_ipi(&mask as *const _ as usize);
+            //     }
+            // }
             res
         } else {
             warn!("[push trap record] User trap uninitialized!");

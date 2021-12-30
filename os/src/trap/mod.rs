@@ -132,7 +132,7 @@ pub fn trap_handler() -> ! {
             plic::handle_external_interrupt(hart_id());
         }
         Trap::Interrupt(Interrupt::SupervisorSoft) => {
-            debug!("Supervisor Soft");
+            // debug!("Supervisor Soft");
             unsafe { sip::clear_ssoft() }
         }
         _ => {
