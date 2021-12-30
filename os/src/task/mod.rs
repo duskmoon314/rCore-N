@@ -12,7 +12,6 @@ use lazy_static::*;
 
 use spin::Mutex;
 use switch::__switch2;
-use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
 pub use pid::{find_task, pid_alloc, KernelStack, PidHandle};
@@ -21,6 +20,7 @@ pub use processor::{
     current_task, current_trap_cx, current_user_token, hart_id, mmap, munmap, run_tasks, schedule,
     set_current_priority, take_current_task,
 };
+pub use task::{TaskControlBlock, TaskStatus};
 
 lazy_static! {
     pub static ref WAIT_LOCK: Mutex<()> = Mutex::new(());

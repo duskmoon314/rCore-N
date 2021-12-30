@@ -2,7 +2,9 @@ const MAX_USER_TRAP_NUM: usize = 128;
 
 use crate::config::CPU_NUM;
 use crate::plic::Plic;
+use crate::sbi::send_ipi;
 use crate::task::hart_id;
+use crate::task::TaskStatus::Running;
 use crate::{mm::PhysPageNum, plic::get_context};
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::arch::asm;
@@ -144,7 +146,14 @@ pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<(), U
             // return Err(UserTrapError::TrapDisabled);
         }
         if let Some(trap_info) = &mut tcb_inner.user_trap_info {
-            trap_info.push_trap_record(trap_record)
+            let res = trap_info.push_trap_record(trap_record);
+            if let Running(task_hart_id) = tcb_inner.task_status {
+                if task_hart_id != hart_id() {
+                    let mask: usize = 1 << task_hart_id;
+                    send_ipi(&mask as *const _ as usize);
+                }
+            }
+            res
         } else {
             warn!("[push trap record] User trap uninitialized!");
             Err(UserTrapError::TrapUninitialized)

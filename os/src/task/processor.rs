@@ -72,7 +72,7 @@ impl Processor {
         // acquire
         let mut task_inner = task.acquire_inner_lock();
         let next_task_cx_ptr = task_inner.get_task_cx_ptr();
-        task_inner.task_status = TaskStatus::Running;
+        task_inner.task_status = TaskStatus::Running(hart_id());
         if let Some(trap_info) = &task_inner.user_trap_info {
             trap_info.enable_user_ext_int();
         }

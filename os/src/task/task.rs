@@ -423,6 +423,6 @@ impl Ord for TaskControlBlock {
 #[derive(Copy, Clone, PartialEq)]
 pub enum TaskStatus {
     Ready,
-    Running,
+    Running(usize),
     Zombie,
 }

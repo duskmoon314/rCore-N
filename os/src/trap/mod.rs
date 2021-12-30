@@ -131,6 +131,10 @@ pub fn trap_handler() -> ! {
             // debug!("Supervisor External");
             plic::handle_external_interrupt(hart_id());
         }
+        Trap::Interrupt(Interrupt::SupervisorSoft) => {
+            debug!("Supervisor Soft");
+            unsafe { sip::clear_ssoft() }
+        }
         _ => {
             error!(
                 "Unsupported trap {:?}, stval = {:#x}!",
