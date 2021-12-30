@@ -14,11 +14,34 @@ __alltraps_u:
     addi sp, sp, -35*8; # sp = sp + -35*8
     sd x1, 1*8(sp)
     sd x3, 3*8(sp)
+
+    # .set n, 5
+    # .rept 27
+    #     SAVE_GP %n
+    #     .set n, n+1
+    # .endr
+
+    # t0-t2
     .set n, 5
-    .rept 27
+    .rept 3
         SAVE_GP %n
         .set n, n+1
     .endr
+
+    # a0-a7
+    .set n, 10
+    .rept 8
+        SAVE_GP %n
+        .set n, n+1
+    .endr
+
+    # t3-t6
+    .set n, 28
+    .rept 4
+        SAVE_GP %n
+        .set n, n+1
+    .endr
+
     csrr t0, ustatus
     csrr t1, uepc
     csrr t2, utvec
@@ -42,11 +65,34 @@ __restore_u:
     csrw uscratch, t3
     ld x1, 1*8(sp)
     ld x3, 3*8(sp)
+
+    # .set n, 5
+    # .rept 27
+    #     LOAD_GP %n
+    #     .set n, n+1
+    # .endr
+
+    # t0-t2
     .set n, 5
-    .rept 27
+    .rept 3
         LOAD_GP %n
         .set n, n+1
     .endr
+
+    # a0-a7
+    .set n, 10
+    .rept 8
+        LOAD_GP %n
+        .set n, n+1
+    .endr
+
+    # t3-t6
+    .set n, 28
+    .rept 4
+        LOAD_GP %n
+        .set n, n+1
+    .endr
+
     addi sp, sp, 35*8
     # csrr sp, uscratch
     uret
