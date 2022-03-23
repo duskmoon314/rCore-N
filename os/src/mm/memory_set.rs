@@ -2,7 +2,7 @@ use super::{frame_alloc, FrameTracker};
 use super::{PTEFlags, PageTable, PageTableEntry};
 use super::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
 use super::{StepByOne, VPNRange};
-use crate::config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE};
+use crate::config::{MEMORY_END, PAGE_SIZE, TRACE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE};
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -168,6 +168,16 @@ impl MemorySet {
             ),
             None,
         );
+        debug!("mapping trace");
+        memory_set.push(
+            MapArea::new(
+                MEMORY_END.into(),
+                (MEMORY_END + TRACE_SIZE).into(),
+                MapType::Mmio,
+                MapPermission::R | MapPermission::W,
+            ),
+            None,
+        );
         unsafe { asm!("fence.i") }
         memory_set
     }
@@ -233,6 +243,16 @@ impl MemorySet {
             ),
             None,
         );
+        // map trace
+        memory_set.push(
+            MapArea::new(
+                MEMORY_END.into(),
+                (MEMORY_END + TRACE_SIZE).into(),
+                MapType::Mmio,
+                MapPermission::R | MapPermission::W | MapPermission::U,
+            ),
+            None,
+        );
         unsafe { asm!("fence.i") }
         (
             memory_set,
@@ -249,12 +269,14 @@ impl MemorySet {
             let new_area = MapArea::from_another(area);
             memory_set.push(new_area, None);
             // copy data from another space
-            for vpn in area.vpn_range {
-                let src_ppn = user_space.translate(vpn).unwrap().ppn();
-                let dst_ppn = memory_set.translate(vpn).unwrap().ppn();
-                dst_ppn
-                    .get_bytes_array()
-                    .copy_from_slice(src_ppn.get_bytes_array());
+            if area.map_type != MapType::Mmio {
+                for vpn in area.vpn_range {
+                    let src_ppn = user_space.translate(vpn).unwrap().ppn();
+                    let dst_ppn = memory_set.translate(vpn).unwrap().ppn();
+                    dst_ppn
+                        .get_bytes_array()
+                        .copy_from_slice(src_ppn.get_bytes_array());
+                }
             }
         }
         unsafe { asm!("fence.i") }

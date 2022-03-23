@@ -6,7 +6,8 @@ pub const KERNEL_HEAP_SIZE: usize = 0x20_0000;
 pub const MEMORY_END: usize = 0x80A00000;
 
 #[cfg(feature = "board_lrv")]
-pub const MEMORY_END: usize = 0x100A00000;
+// pub const MEMORY_END: usize = 0x100A00000;
+pub const MEMORY_END: usize = 0x101000000;
 
 pub const PAGE_SIZE: usize = 0x1000;
 pub const PAGE_SIZE_BITS: usize = 0xc;
@@ -22,3 +23,4 @@ pub const CLOCK_FREQ: usize = 12500000;
 pub const CLOCK_FREQ: usize = 10_000_000;
 
 pub const CPU_NUM: usize = 4;
+pub const TRACE_SIZE: usize = 0x1000_0000; // 256M

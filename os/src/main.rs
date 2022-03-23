@@ -33,6 +33,7 @@ mod timer;
 mod trap;
 #[macro_use]
 mod uart;
+mod trace;
 
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.asm"));
@@ -57,6 +58,8 @@ pub fn rust_main(hart_id: usize) -> ! {
         plic::init();
         plic::init_hart(hart_id);
         uart::init();
+        trace::init();
+        trace::trace_test();
 
         extern "C" {
             fn boot_stack();
@@ -67,6 +70,7 @@ pub fn rust_main(hart_id: usize) -> ! {
             "boot_stack {:#x} top {:#x}",
             boot_stack as usize, boot_stack_top as usize
         );
+        // unsafe { ebreak() }
 
         debug!("trying to add initproc");
         task::add_initproc();
