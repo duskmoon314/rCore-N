@@ -1,3 +1,4 @@
+use crate::trace::{push_trace, S_EXT_INTR_ENTER, S_EXT_INTR_EXIT};
 use crate::trap::{push_trap_record, UserTrapRecord, USER_EXT_INT_MAP};
 use crate::uart;
 use rv_plic::{Priority, PLIC};
@@ -63,6 +64,7 @@ pub fn init_hart(hart_id: usize) {
 pub fn handle_external_interrupt(hart_id: usize) {
     let context = get_context(hart_id, 'S');
     while let Some(irq) = Plic::claim(context) {
+        push_trace(S_EXT_INTR_ENTER + irq as usize);
         let mut can_user_handle = false;
         let uei_map = USER_EXT_INT_MAP.lock();
         if let Some(pid) = uei_map.get(&irq).cloned() {
@@ -100,5 +102,6 @@ pub fn handle_external_interrupt(hart_id: usize) {
             }
             Plic::complete(context, irq);
         }
+        push_trace(S_EXT_INTR_EXIT + irq as usize);
     }
 }

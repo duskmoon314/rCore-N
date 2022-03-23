@@ -9,6 +9,8 @@ pub const USER_TRAP_BUFFER: usize = TRAP_CONTEXT - PAGE_SIZE;
 const MAX_USER_TRAP_NUM: usize = 128;
 
 use rv_plic::PLIC;
+
+use crate::trace::{push_trace, TRAP_QUEUE_ENTER, TRAP_QUEUE_EXIT, U_TRAP_HANDLER};
 pub const PLIC_BASE: usize = 0xc00_0000;
 pub const PLIC_PRIORITY_BIT: usize = 3;
 pub type Plic = PLIC<PLIC_BASE, PLIC_PRIORITY_BIT>;
@@ -56,8 +58,10 @@ global_asm!(include_str!("trap.asm"));
 pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
     let ucause = ucause::read();
     let utval = utval::read();
+    push_trace(U_TRAP_HANDLER + ucause.bits());
     match ucause.cause() {
         ucause::Trap::Interrupt(ucause::Interrupt::UserSoft) => {
+            // push_trace(TRAP_QUEUE_ENTER);
             let trap_queue = unsafe { &mut *(USER_TRAP_BUFFER as *mut UserTrapQueue) };
             // println!(
             //     "[user trap] Received {} trap from kernel.",
@@ -80,6 +84,7 @@ pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
                     timer_intr_handler(msg);
                 }
             }
+            // push_trace(TRAP_QUEUE_EXIT);
         }
         ucause::Trap::Interrupt(ucause::Interrupt::UserExternal) => {
             while let Some(irq) = Plic::claim(get_context(hart_id(), 'U')) {

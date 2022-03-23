@@ -263,6 +263,8 @@ fn user_intr_test() -> (usize, usize, usize) {
 }
 
 mod user_trap {
+    use user_lib::trace::{push_trace, U_EXT_HANDLER};
+
     use super::*;
     #[no_mangle]
     pub fn soft_intr_handler(_pid: usize, msg: usize) {
@@ -305,6 +307,7 @@ mod user_trap {
         // } else {
         //     println!("[uart load] user external interrupt, irq: {}", irq);
         // }
+        // push_trace(U_EXT_HANDLER);
         if irq == UART_IRQN.load(Relaxed) {
             HAS_INTR.store(true, Relaxed);
         } else {

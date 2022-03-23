@@ -10,7 +10,9 @@ use crate::task::{
     suspend_current_and_run_next,
 };
 use crate::timer::{get_time_us, set_next_trigger, TIMER_MAP};
+use crate::trace::{push_trace, S_TRAP_HANDLER, S_TRAP_RETURN};
 use core::arch::{asm, global_asm};
+use riscv::register::scounteren;
 use riscv::register::{
     mtvec::TrapMode,
     scause::{self, Exception, Interrupt, Trap},
@@ -27,6 +29,9 @@ pub fn init() {
         sideleg::set_usoft();
         sideleg::set_uext();
         sideleg::set_utimer();
+        scounteren::set_cy();
+        scounteren::set_tm();
+        scounteren::set_ir();
     }
     set_kernel_trap_entry();
 }
@@ -51,6 +56,8 @@ pub fn trap_handler() -> ! {
     set_kernel_trap_entry();
     let scause = scause::read();
     let stval = stval::read();
+    push_trace(S_TRAP_HANDLER + scause.bits());
+
     // trace!(
     //     "trap from user, cause: {:?}, stval: {}, trap frame: {:x?}",
     //     scause.cause(),
@@ -87,7 +94,13 @@ pub fn trap_handler() -> ! {
             exit_current_and_run_next(-2);
         }
         Trap::Exception(Exception::IllegalInstruction) => {
-            error!("[kernel] IllegalInstruction in application, core dumped.");
+            // error!("[kernel] IllegalInstruction in application, core dumped.");
+            error!(
+                "[kernel] {:?} in application, bad addr = {:#x}, bad instruction = {:#x}, core dumped.",
+                scause.cause(),
+                current_trap_cx().sepc,
+                stval,
+            );
             // illegal instruction exit code
             exit_current_and_run_next(-3);
         }
@@ -164,6 +177,7 @@ pub fn trap_return() -> ! {
     }
     let restore_va = __restore as usize - __alltraps as usize + TRAMPOLINE;
     // trace!("return to user, trap frame: {:x?}", current_trap_cx());
+    push_trace(S_TRAP_RETURN + scause::read().bits());
     unsafe {
         sstatus::set_spie();
         sstatus::set_spp(sstatus::SPP::User);

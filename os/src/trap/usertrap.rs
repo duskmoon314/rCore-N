@@ -5,6 +5,10 @@ use crate::plic::Plic;
 use crate::sbi::send_ipi;
 use crate::task::hart_id;
 use crate::task::TaskStatus::Running;
+use crate::trace::{
+    push_trace, DISABLE_USER_EXT_INT_ENTER, DISABLE_USER_EXT_INT_EXIT, ENABLE_USER_EXT_INT_ENTER,
+    ENABLE_USER_EXT_INT_EXIT, PUSH_TRAP_RECORD_ENTER, PUSH_TRAP_RECORD_EXIT,
+};
 use crate::{mm::PhysPageNum, plic::get_context};
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::arch::asm;
@@ -45,6 +49,8 @@ impl UserTrapInfo {
     }
 
     pub fn enable_user_ext_int(&self) {
+        push_trace(ENABLE_USER_EXT_INT_ENTER);
+
         let u_context = get_context(hart_id(), 'U');
         for (device_id, is_enabled) in &self.devices {
             for hart_id in 0..CPU_NUM {
@@ -71,9 +77,12 @@ impl UserTrapInfo {
         //         CNT = 0;
         //     }
         // }
+        push_trace(ENABLE_USER_EXT_INT_EXIT);
     }
 
     pub fn disable_user_ext_int(&self) {
+        push_trace(DISABLE_USER_EXT_INT_ENTER);
+
         let hart_id = hart_id();
         for (device_id, is_enabled) in &self.devices {
             Plic::disable(get_context(hart_id, 'U'), *device_id);
@@ -98,6 +107,7 @@ impl UserTrapInfo {
         //         CNT = 0;
         //     }
         // }
+        push_trace(DISABLE_USER_EXT_INT_EXIT);
     }
 
     pub fn remove_user_ext_int_map(&self) {
@@ -135,6 +145,7 @@ lazy_static! {
 }
 
 pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<(), UserTrapError> {
+    push_trace(PUSH_TRAP_RECORD_ENTER + pid);
     debug!(
         "[push trap record] pid: {}, cause: {}, message: {}",
         pid, trap_record.cause, trap_record.message
@@ -153,13 +164,16 @@ pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<(), U
             //         send_ipi(&mask as *const _ as usize);
             //     }
             // }
+            push_trace(PUSH_TRAP_RECORD_EXIT);
             res
         } else {
             warn!("[push trap record] User trap uninitialized!");
+            push_trace(PUSH_TRAP_RECORD_EXIT);
             Err(UserTrapError::TrapUninitialized)
         }
     } else {
         warn!("[push trap record] Task Not Found!");
+        push_trace(PUSH_TRAP_RECORD_EXIT);
         Err(UserTrapError::TaskNotFound)
     }
 }
