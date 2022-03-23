@@ -17,6 +17,7 @@ const SYSCALL_WAITPID: usize = 260;
 const SYSCALL_SPAWN: usize = 400;
 const SYSCALL_MAILREAD: usize = 401;
 const SYSCALL_MAILWRITE: usize = 402;
+const SYSCALL_FLUSH_TRACE: usize = 555;
 const SYSCALL_INIT_USER_TRAP: usize = 600;
 const SYSCALL_SEND_MSG: usize = 601;
 const SYSCALL_SET_TIMER: usize = 602;
@@ -102,6 +103,10 @@ pub fn sys_mailread(buf: &mut [u8]) -> isize {
 
 pub fn sys_mailwrite(pid: usize, buf: &[u8]) -> isize {
     syscall(SYSCALL_MAILWRITE, [pid, buf.as_ptr() as usize, buf.len()])
+}
+
+pub fn sys_flush_trace() -> isize {
+    syscall(SYSCALL_FLUSH_TRACE, [0, 0, 0])
 }
 
 pub fn sys_init_user_trap() -> isize {

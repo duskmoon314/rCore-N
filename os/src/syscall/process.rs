@@ -1,6 +1,4 @@
-use core::mem::size_of;
-
-use crate::config::CPU_NUM;
+use crate::config::{CPU_NUM, MEMORY_END};
 use crate::loader::get_app_data_by_name;
 use crate::mm;
 use crate::plic::{get_context, Plic};
@@ -8,11 +6,10 @@ use crate::task::{
     add_task, current_task, current_user_token, exit_current_and_run_next, hart_id, mmap, munmap,
     set_current_priority, suspend_current_and_run_next, WAIT_LOCK,
 };
-use crate::trap::{push_trap_record, UserTrapRecord};
-
 use crate::timer::get_time;
-use alloc::sync::Arc;
+use crate::trap::{push_trap_record, UserTrapRecord};
 use alloc::vec::Vec;
+use core::mem::size_of;
 
 pub fn sys_exit(exit_code: i32) -> ! {
     exit_current_and_run_next(exit_code);
@@ -143,6 +140,17 @@ pub fn sys_spawn(file: *const u8) -> isize {
             -1
         }
     }
+}
+
+pub fn sys_flush_trace() -> isize {
+    const FLUSH_SIZE: usize = 0x400_0000; // 2M
+    let pid = current_task().unwrap().pid.0;
+    let offset = FLUSH_SIZE * (pid as usize & 3);
+    let start = MEMORY_END + offset;
+    (start..(start + FLUSH_SIZE)).for_each(|a| unsafe {
+        let _ = (a as *mut u8).read_volatile();
+    });
+    0
 }
 
 pub fn sys_init_user_trap() -> isize {

@@ -7,6 +7,7 @@
 pub mod console;
 mod lang_items;
 mod syscall;
+pub mod trace;
 pub mod trap;
 pub mod user_uart;
 
@@ -186,6 +187,10 @@ pub fn mailread(buf: &mut [u8]) -> isize {
 
 pub fn mailwrite(pid: usize, buf: &[u8]) -> isize {
     sys_mailwrite(pid, buf)
+}
+
+pub fn flush_trace() -> isize {
+    sys_flush_trace()
 }
 
 pub fn init_user_trap() -> isize {
