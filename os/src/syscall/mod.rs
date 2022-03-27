@@ -25,14 +25,14 @@ const SYSCALL_SET_EXT_INT_ENABLE: usize = 604;
 mod fs;
 mod process;
 
-use crate::trace::{push_trace, SYSCALL};
+use crate::trace::{push_trace, TRACE_SYSCALL_ENTER, TRACE_SYSCALL_EXIT};
 use fs::*;
 use process::*;
 
 pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
     trace!("syscall {}, args {:x?}", syscall_id, args);
-    push_trace(SYSCALL + syscall_id);
-    match syscall_id {
+    push_trace(TRACE_SYSCALL_ENTER + syscall_id);
+    let ret = match syscall_id {
         SYSCALL_CLOSE => sys_close(args[0]),
         SYSCALL_PIPE => sys_pipe(args[0] as *mut usize),
         SYSCALL_READ => sys_read(args[0], args[1] as *const u8, args[2]),
@@ -57,5 +57,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
         SYSCALL_CLAIM_EXT_INT => sys_claim_ext_int(args[0]),
         SYSCALL_SET_EXT_INT_ENABLE => sys_set_ext_int_enable(args[0], args[1]),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
-    }
+    };
+    push_trace(TRACE_SYSCALL_EXIT + syscall_id);
+    ret
 }
