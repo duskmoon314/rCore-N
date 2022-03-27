@@ -12,11 +12,12 @@ pub struct TaskContext {
     pub utvec: usize,
     pub utval: usize,
     pub ucause: usize,
+    pub tid: usize,
     pub sp: usize,
 }
 
 impl TaskContext {
-    pub fn goto_trap_return(kernel_stack_top: usize) -> Self {
+    pub fn goto_trap_return(kernel_stack_top: usize, tid: usize) -> Self {
         Self {
             ra: trap_return as usize,
             s: [0; 12],
@@ -26,6 +27,7 @@ impl TaskContext {
             utvec: 0,
             utval: 0,
             ucause: 0,
+            tid,
             sp: kernel_stack_top,
         }
     }
@@ -42,6 +44,7 @@ impl Default for TaskContext {
             utvec: 0,
             utval: 0,
             ucause: 0,
+            tid: 0xDADADADA,
             sp: 0xABABABAB,
         }
     }

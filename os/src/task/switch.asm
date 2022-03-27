@@ -14,7 +14,7 @@ __switch:
     # )
     # push TaskContext to current sp and save its address to where a0 points to
     fence.i
-    addi sp, sp, -19*8
+    addi sp, sp, -20*8
     sd sp, 0(a0)
     # fill TaskContext with ra & s0-s11
     sd ra, 0(sp)
@@ -35,6 +35,7 @@ __switch:
     sd s3, 16*8(sp)
     sd s4, 17*8(sp)
     sd s5, 18*8(sp)
+    sd gp, 19*8(sp)
 
     # ready for loading TaskContext a1 points to
     ld sp, 0(a1)
@@ -46,6 +47,7 @@ __switch:
     ld s3, 16*8(sp)
     ld s4, 17*8(sp)
     ld s5, 18*8(sp)
+    ld gp, 19*8(sp)
     csrw uie, s0
     csrw uip, s1
     csrw uepc, s2
@@ -58,7 +60,7 @@ __switch:
         .set n, n + 1
     .endr
     # pop TaskContext
-    addi sp, sp, 19*8
+    addi sp, sp, 20*8
     fence.i
     ret
 

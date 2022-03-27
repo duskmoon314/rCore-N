@@ -176,7 +176,7 @@ impl TaskControlBlock {
         let kernel_stack = KernelStack::new(&pid_handle);
         let kernel_stack_top = kernel_stack.get_top();
         // push a task context which goes to trap_return to the top of kernel stack
-        let task_cx = TaskContext::goto_trap_return(kernel_stack_top);
+        let task_cx = TaskContext::goto_trap_return(kernel_stack_top, pid_handle.0);
         let task_cx_ptr = kernel_stack.push_on_top(task_cx.clone());
         trace!("new task cx ptr: {:#x?}", task_cx_ptr as usize);
         let task_control_block = Arc::new(TaskControlBlock {
@@ -266,7 +266,7 @@ impl TaskControlBlock {
         let kernel_stack = KernelStack::new(&pid_handle);
         let kernel_stack_top = kernel_stack.get_top();
         // push a goto_trap_return task_cx on the top of kernel stack
-        let task_cx = TaskContext::goto_trap_return(kernel_stack_top);
+        let task_cx = TaskContext::goto_trap_return(kernel_stack_top, pid_handle.0);
         let task_cx_ptr = kernel_stack.push_on_top(task_cx.clone());
         debug!("forked task cx ptr: {:#x?}", task_cx_ptr as usize);
         // copy fd table
@@ -343,7 +343,7 @@ impl TaskControlBlock {
             let pid_handle = pid_alloc();
             let kernel_stack = KernelStack::new(&pid_handle);
             let kernel_stack_top = kernel_stack.get_top();
-            let task_cx = TaskContext::goto_trap_return(kernel_stack_top);
+            let task_cx = TaskContext::goto_trap_return(kernel_stack_top, pid_handle.0);
             let task_cx_ptr = kernel_stack.push_on_top(task_cx.clone());
             trace!("spawned task cx ptr: {:#x?}", task_cx_ptr as usize);
 
