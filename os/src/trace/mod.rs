@@ -26,7 +26,8 @@ pub const U_SOFT_HANDLER: usize = 0xc7ab_b000;
 pub const U_TIMER_HANDLER: usize = 0xc7ab_c000;
 
 // syscall
-pub const SYSCALL: usize = 0x575c_0000;
+pub const TRACE_SYSCALL_ENTER: usize = 0x575c_0000;
+pub const TRACE_SYSCALL_EXIT: usize = 0x575c_1000;
 
 // SBI call
 pub const SEND_IPI_ENTER: usize = 0x5b1c_0000;
@@ -42,10 +43,29 @@ extern "C" {
 }
 
 pub fn push_trace(event_id: usize) -> usize {
+    let cycle: usize;
     #[cfg(feature = "board_lrv")]
     unsafe {
-        __push_trace(event_id)
+        // __push_trace(event_id)
+        core::arch::asm!(
+            "
+        amoadd.d {tail}, {step}, ({mem_end}) # t2 <- queue_tail, queue_tail <- queue_tail + 16
+        slli {eid_ext}, tp, 32
+        or {eid}, {eid}, {eid_ext}
+        slli {eid_ext}, gp, 36
+        or {eid}, {eid}, {eid_ext}
+        sd {eid}, 0*8({tail})
+        csrr {cy}, cycle
+        sd {cy}, 1*8({tail})",
+        eid = in(reg) event_id,
+        step = in(reg) 16,
+        mem_end = in(reg) MEMORY_END,
+        cy = out(reg) cycle,
+        tail = out(reg) _,
+        eid_ext = out(reg) _,
+        )
     }
+    cycle
 }
 
 pub fn init() {
