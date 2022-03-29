@@ -13,7 +13,7 @@ __alltraps_u:
     # csrw uscratch, sp
     addi sp, sp, -35*8; # sp = sp + -35*8
     sd x1, 1*8(sp)
-    sd x3, 3*8(sp)
+    # sd x3, 3*8(sp)
 
     # .set n, 5
     # .rept 27
@@ -64,7 +64,7 @@ __restore_u:
     csrw utvec, t2
     csrw uscratch, t3
     ld x1, 1*8(sp)
-    ld x3, 3*8(sp)
+    # ld x3, 3*8(sp)
 
     # .set n, 5
     # .rept 27
