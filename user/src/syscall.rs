@@ -1,4 +1,7 @@
-use crate::TimeVal;
+use crate::{
+    trace::{push_trace, TRACE_SYSCALL_ENTER, TRACE_SYSCALL_EXIT},
+    TimeVal,
+};
 use core::arch::asm;
 
 const SYSCALL_DUP: usize = 24;
@@ -26,10 +29,12 @@ const SYSCALL_SET_EXT_INT_ENABLE: usize = 604;
 
 fn syscall(id: usize, args: [usize; 3]) -> isize {
     let mut ret: isize;
+    push_trace(TRACE_SYSCALL_ENTER + id);
     unsafe {
         asm!("ecall", inout("a0") args[0] => ret, in("a1") args[1],
              in("a2") args[2], in("a7") id)
     }
+    push_trace(TRACE_SYSCALL_EXIT + id);
     ret
 }
 
