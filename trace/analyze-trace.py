@@ -19,22 +19,22 @@ cause_intr = {
     2: "hsi",
     3: "msi",
     4: "uti",
-    5: "sti",
+    5: "Supervisor Timer Interrupt",
     6: "hti",
     7: "mti",
-    8: "uei",
-    9: "sei",
+    8: "User External Interrupt",
+    9: "Supervisor External Interrupt",
     10: "hei",
     11: "mei",
 }
 
 cause_excep = {
-    0: "InstAddrMisaligned",
-    8: "u-ecall",
+    0: "Instruction Address Misaligned",
+    8: "User Environment Call",
     9: "s-ecall",
     11: "m-ecall",
-    13: "LoadPageFault",
-    15: "StorePageFault",
+    13: "Load Page Fault",
+    15: "Store Page Fault",
 }
 
 syscall_name = {
@@ -63,12 +63,15 @@ syscall_name = {
     604: "SET_EXT_INT_ENABLE",
 }
 
+accept_pid = {3, 4, 7, 8, 11, 12, 15, 16}
 
-def filter_outlier_iqr(data, factor):
+
+def filter_outlier(data, factor):
     q25, q75 = percentile(data, 25), percentile(data, 75)
     iqr = q75 - q25
     cut_off = iqr * factor
     lower, upper = q25 - cut_off, q75 + cut_off
+    # lower, upper = percentile(data, 0.1), percentile(data, 99.9)
     return [x for x in data if x >= lower and x <= upper]
 
 
@@ -115,7 +118,7 @@ def trap_rec_stat(rec_dict, enter_id, exit_id):
                             trap_stat[cause].append(c2 - c1)
                             break
 
-    return {cause: filter_outlier_iqr(stat, 3) for cause, stat in trap_stat.items()}
+    return {cause: filter_outlier(stat, 2) for cause, stat in trap_stat.items()}
 
 
 def syscall_stat(rec_dict, enter_id, exit_id):
@@ -137,7 +140,7 @@ def syscall_stat(rec_dict, enter_id, exit_id):
                             syscall_stat[sid].append(c2 - c1)
                             break
 
-    return {sid: filter_outlier_iqr(stat, 3) for sid, stat in syscall_stat.items()}
+    return {sid: filter_outlier(stat, 2) for sid, stat in syscall_stat.items()}
 
 
 if __name__ == "__main__":
@@ -147,7 +150,7 @@ if __name__ == "__main__":
     for hart in range(4):
         s_trap[hart] = defaultdict(list)
 
-    with open("trace-bench.bin", "rb", buffering=0x10000) as f:
+    with open("trace.bin", "rb", buffering=0x10000) as f:
         while True:
             record_bytes = f.read(16)
             if len(record_bytes) < 16:
@@ -173,33 +176,38 @@ if __name__ == "__main__":
                 p = pid(e)
                 if p not in u_trap:
                     u_trap[p] = defaultdict(list)
-                u_trap[p][extra(e)].append((e, c))
+                if p in accept_pid:
+                    u_trap[p][extra(e)].append((e, c))
 
             # syscall
             if event_type(e) == 0x575C:
                 p = pid(e)
                 if p not in syscall:
                     syscall[p] = defaultdict(list)
-                syscall[p][extra(e)].append((e, c))
+                if p in accept_pid:
+                    syscall[p][extra(e)].append((e, c))
 
         s_trap_stat = trap_rec_stat(s_trap, 2, 3)
         u_trap_stat = trap_rec_stat(u_trap, 8, 9)
-        syscall_stat = syscall_stat(syscall, 0, 0)
+        syscall_stat = syscall_stat(syscall, 0, 1)
 
         for cause in s_trap_stat.keys():
             stat = s_trap_stat[cause]
             plt.hist(stat, 1000)
             plt.title(trap_cause_name(cause))
+            plt.xlabel("cycle")
             plt.show()
 
         for cause in u_trap_stat.keys():
             stat = u_trap_stat[cause]
             plt.hist(stat, 1000)
             plt.title(trap_cause_name(cause))
+            plt.xlabel("cycle")
             plt.show()
 
         for sid in syscall_stat.keys():
             stat = syscall_stat[sid]
             plt.hist(stat, 1000)
             plt.title(syscall_name[sid])
+            plt.xlabel("cycle")
             plt.show()
