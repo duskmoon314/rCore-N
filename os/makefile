@@ -1,6 +1,7 @@
 # Building
-QEMU := ../qemu-build/riscv64-softmmu/qemu-system-riscv64
-TARGET := riscv64gc-unknown-none-elf
+QEMU := ../../qemu-build/riscv64-softmmu/qemu-system-riscv64
+# TARGET := riscv64gc-unknown-none-elf
+TARGET := riscv64imac-unknown-none-elf
 MODE := release
 KERNEL_ELF := target/$(TARGET)/$(MODE)/os
 KERNEL_BIN := $(KERNEL_ELF).bin
@@ -9,7 +10,7 @@ DISASM_TMP := target/$(TARGET)/$(MODE)/asm
 # BOARD
 BOARD ?= qemu
 SBI ?= rustsbi
-BOOTLOADER := ../bootloader/$(SBI)-$(BOARD).bin
+BOOTLOADER := ./$(SBI)-$(BOARD).bin
 K210_BOOTLOADER_SIZE := 131072
 
 # KERNEL ENTRY
@@ -80,8 +81,8 @@ endif
 
 debug: build
 	@tmux new-session -d \
-		"$(QEMU) -machine virt -nographic -bios $(BOOTLOADER) -device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA) -s -S" && \
-		tmux split-window -h "riscv64-unknown-elf-gdb -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'" && \
+		"$(QEMU) -machine virt -nographic -bios $(BOOTLOADER) -device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA) -s -S  &&  echo '按任意键继续' && read -n 1" && \
+		tmux split-window -h "riscv64-elf-gdb -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'" && \
 		tmux -2 attach-session -d
 
 .PHONY: build env kernel clean disasm disasm-vim run-inner

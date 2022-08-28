@@ -3,7 +3,7 @@ pub const KERNEL_STACK_SIZE: usize = 0x4000;
 pub const KERNEL_HEAP_SIZE: usize = 0x20_0000;
 
 #[cfg(feature = "board_qemu")]
-pub const MEMORY_END: usize = 0x80A00000;
+pub const MEMORY_END: usize = 0x82000000;
 
 #[cfg(feature = "board_lrv")]
 // pub const MEMORY_END: usize = 0x100A00000;
