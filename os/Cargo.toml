@@ -29,4 +29,4 @@ heapless = "0.7.5"
 board_qemu = ["uart8250"]
 board_lrv = ["uart_xilinx"]
 
-default-features = ["board_qemu"]
+default = ["board_qemu"]
