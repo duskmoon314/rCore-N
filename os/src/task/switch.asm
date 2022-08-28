@@ -80,7 +80,7 @@ __switch2:
     # )
     # push TaskContext to current sp and save its address to where a0 points to
     # fill TaskContext with ra & s0-s11
-    sd sp, 19*8(a0)
+    sd sp, 20*8(a0)
     sd ra, 0(a0)
     .set n, 0
     .rept 12
@@ -102,7 +102,7 @@ __switch2:
 
     # ready for loading TaskContext a1 points to
     # load registers in the TaskContext
-    ld sp, 19*8(a1)
+    ld sp, 20*8(a1)
     ld ra, 0(a1)
     ld s0, 13*8(a1)
     ld s1, 14*8(a1)

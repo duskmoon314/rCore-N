@@ -1,4 +1,5 @@
 .globl __push_trace
+.attribute arch, "rv64imac"
 # event_id in a0
 __push_trace:
     # prelogue
