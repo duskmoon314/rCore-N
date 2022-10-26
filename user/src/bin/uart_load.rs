@@ -15,6 +15,7 @@ use riscv::register::uie;
 use spin::Mutex;
 use user_lib::{
     claim_ext_int, get_time, init_user_trap, read, set_ext_int_enable, set_timer, sleep,
+    trace::{push_trace, SERIAL_CALL_ENTER, SERIAL_CALL_EXIT, U_TRAP_RETURN},
     trap::{get_context, hart_id, Plic},
     user_uart::*,
     write, yield_,
@@ -30,9 +31,15 @@ static MODE: AtomicU32 = AtomicU32::new(0);
 
 const TEST_TIME_US: isize = 1000_000;
 // const HALF_FIFO_DEPTH: usize = FIFO_DEPTH / 2;
-const HALF_FIFO_DEPTH: usize = 14;
+const HALF_FIFO_DEPTH: usize = 50;
+// const BAUD_RATE: usize = 1_250_000;
 const BAUD_RATE: usize = 6250_000;
 const MAX_SHIFT: isize = 10;
+
+const SERIAL_POLL_READ: usize = 63;
+const SERIAL_POLL_WRITE: usize = 64;
+const SERIAL_INTR_READ: usize = 65;
+const SERIAL_INTR_WRITE: usize = 66;
 
 type Rng = Mutex<XorShiftRng>;
 type Hasher = blake3::Hasher;
@@ -103,16 +110,19 @@ fn kernel_driver_test() -> (usize, usize, usize) {
     //         tx_fd, rx_fd, next_tx as u8, expect_rx as u8,
     //     );
     // }
-    let mut tx_buf = [0u8; HALF_FIFO_DEPTH * 5];
-    let mut rx_buf = [0u8; HALF_FIFO_DEPTH * 5];
+    // let mut tx_buf = [0u8; HALF_FIFO_DEPTH * 5];
+    // let mut rx_buf = [0u8; HALF_FIFO_DEPTH * 5];
+    let mut tx_buf = [0u8; HALF_FIFO_DEPTH];
+    let mut rx_buf = [0u8; HALF_FIFO_DEPTH];
     while read(rx_fd, &mut rx_buf) > 0 {}
     sleep(20);
     let time_us = get_time() * 1000;
     set_timer(time_us + TEST_TIME_US);
     while !(IS_TIMEOUT.load(Relaxed)) {
-        for i in 0..HALF_FIFO_DEPTH * 5 {
+        // for i in 0..HALF_FIFO_DEPTH * 5 {
+        for i in 0..HALF_FIFO_DEPTH {
             tx_buf[i] = next_tx as u8;
-            hasher.update(&[next_tx as u8]);
+            // hasher.update(&[next_tx as u8]);
             next_tx = tx_rng.next_u32();
         }
         let tx_fifo_count = write(tx_fd, &tx_buf);
@@ -129,7 +139,7 @@ fn kernel_driver_test() -> (usize, usize, usize) {
                     expect_rx = rx_rng.next_u32();
                     max_shift -= 1;
                 }
-                hasher.update(&[*rx_val]);
+                // hasher.update(&[*rx_val]);
                 expect_rx = rx_rng.next_u32();
             }
             rx_count += rx_fifo_count as usize;
@@ -156,11 +166,15 @@ fn user_polling_test() -> (usize, usize, usize) {
     set_timer(time_us + TEST_TIME_US);
 
     while !(IS_TIMEOUT.load(Relaxed)) {
+        push_trace(SERIAL_CALL_ENTER + SERIAL_POLL_READ);
         for _ in 0..HALF_FIFO_DEPTH {
             serial.try_write(next_tx as u8).unwrap();
-            hasher.update(&[next_tx as u8]);
+            // hasher.update(&[next_tx as u8]);
             next_tx = tx_rng.next_u32();
         }
+        push_trace(SERIAL_CALL_EXIT + SERIAL_POLL_READ);
+
+        push_trace(SERIAL_CALL_ENTER + SERIAL_POLL_WRITE);
         for _ in 0..HALF_FIFO_DEPTH {
             if let Ok(rx_val) = serial.try_read() {
                 let mut max_shift = MAX_SHIFT;
@@ -172,10 +186,11 @@ fn user_polling_test() -> (usize, usize, usize) {
                     expect_rx = rx_rng.next_u32();
                     max_shift -= 1;
                 }
-                hasher.update(&[rx_val]);
+                // hasher.update(&[rx_val]);
                 expect_rx = rx_rng.next_u32();
             }
         }
+        push_trace(SERIAL_CALL_EXIT + SERIAL_POLL_WRITE);
     }
 
     if uart_irqn == 14 || uart_irqn == 6 {
@@ -217,13 +232,16 @@ fn user_intr_test() -> (usize, usize, usize) {
     }
 
     while !(IS_TIMEOUT.load(Relaxed)) {
+        push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_READ);
         for _ in 0..HALF_FIFO_DEPTH {
             if let Ok(()) = serial.try_write(next_tx as u8) {
-                hasher.update(&[next_tx as u8]);
+                // hasher.update(&[next_tx as u8]);
                 next_tx = tx_rng.next_u32();
             }
         }
+        push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_READ);
 
+        push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_WRITE);
         for _ in 0..HALF_FIFO_DEPTH {
             if let Ok(rx_val) = serial.try_read() {
                 let mut max_shift = MAX_SHIFT;
@@ -235,13 +253,15 @@ fn user_intr_test() -> (usize, usize, usize) {
                     max_shift -= 1;
                     expect_rx = rx_rng.next_u32();
                 }
-                hasher.update(&[rx_val]);
+                // hasher.update(&[rx_val]);
                 expect_rx = rx_rng.next_u32();
             }
         }
+        push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_WRITE);
 
         if HAS_INTR.load(Relaxed) {
             serial.interrupt_handler();
+            push_trace(U_TRAP_RETURN | 8 | 128);
             HAS_INTR.store(false, Relaxed);
             Plic::complete(get_context(hart_id(), 'U'), uart_irqn);
         }
@@ -263,7 +283,8 @@ fn user_intr_test() -> (usize, usize, usize) {
 }
 
 mod user_trap {
-    use user_lib::trace::{push_trace, U_EXT_HANDLER};
+    use riscv::register::ucause;
+    use user_lib::trace::{push_trace, U_EXT_HANDLER, U_TRAP_HANDLER, U_TRAP_RETURN};
 
     use super::*;
     #[no_mangle]
@@ -274,6 +295,7 @@ mod user_trap {
         // } else {
         //     println!("[uart load] Received message 0x{:x} from pid {}", msg, pid);
         // }
+        // push_trace(U_TRAP_HANDLER | 0 | 128);
         if let Some(config) = UartLoadConfig::from_bits(msg as u32) {
             let mode = config & UartLoadConfig::ALL_MODE;
             MODE.store(mode.bits(), Relaxed);
@@ -298,6 +320,7 @@ mod user_trap {
         } else {
             println!("[uart load] Invalid config {:#x}!", msg);
         }
+        // push_trace(U_TRAP_RETURN | 0 | 128);
     }
 
     #[no_mangle]
@@ -309,7 +332,10 @@ mod user_trap {
         // }
         // push_trace(U_EXT_HANDLER);
         if irq == UART_IRQN.load(Relaxed) {
-            HAS_INTR.store(true, Relaxed);
+            if !HAS_INTR.load(Relaxed) {
+                push_trace(U_TRAP_HANDLER | 8 | 128);
+                HAS_INTR.store(true, Relaxed);
+            }
         } else {
             println!("[uart load] Unknown UEI!, irq: {}", irq);
         }
@@ -318,6 +344,8 @@ mod user_trap {
 
     #[no_mangle]
     pub fn timer_intr_handler(_time_us: usize) {
+        // push_trace(U_TRAP_HANDLER | 4 | 128);
         IS_TIMEOUT.store(true, Relaxed);
+        // push_trace(U_TRAP_RETURN | 4 | 128);
     }
 }

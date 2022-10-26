@@ -1,3 +1,4 @@
 .vscode/
 debug.log
 link_app.asm
+trace/*.bin

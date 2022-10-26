@@ -2,6 +2,10 @@ use core::cmp::min;
 
 use crate::fs::{make_pipe, File};
 use crate::task::{current_task, current_user_token};
+use crate::trace::{
+    push_trace, TRACE_SYSCALL_READ_FIND_FD, TRACE_SYSCALL_READ_RES, TRACE_SYSCALL_WRITE_FIND_FD,
+    TRACE_SYSCALL_WRITE_RES,
+};
 use crate::{
     mm::{translated_byte_buffer, translated_refmut, UserBuffer},
     task::find_task,
@@ -18,14 +22,17 @@ pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
         return -1;
     }
     if let Some(file) = &inner.fd_table[fd] {
+        push_trace(TRACE_SYSCALL_WRITE_FIND_FD + fd);
         let file = file.clone();
         // release Task lock manually to avoid deadlock
         drop(inner);
         if let Ok(buffers) = translated_byte_buffer(token, buf, len) {
-            match file.write(UserBuffer::new(buffers)) {
+            let res = match file.write(UserBuffer::new(buffers)) {
                 Ok(write_len) => write_len as isize,
                 Err(_) => -2,
-            }
+            };
+            push_trace((TRACE_SYSCALL_WRITE_RES as isize + res) as usize);
+            res
         } else {
             -3
         }
@@ -45,14 +52,17 @@ pub fn sys_read(fd: usize, buf: *const u8, len: usize) -> isize {
         return -1;
     }
     if let Some(file) = &inner.fd_table[fd] {
+        push_trace(TRACE_SYSCALL_READ_FIND_FD + fd);
         let file = file.clone();
         // release Task lock manually to avoid deadlock
         drop(inner);
         if let Ok(buffers) = translated_byte_buffer(token, buf, len) {
-            match file.read(UserBuffer::new(buffers)) {
+            let res = match file.read(UserBuffer::new(buffers)) {
                 Ok(read_len) => read_len as isize,
                 Err(_) => -2,
-            }
+            };
+            push_trace((TRACE_SYSCALL_READ_RES as isize + res) as usize);
+            res
         } else {
             -3
         }

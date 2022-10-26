@@ -21,7 +21,7 @@ binary: elf
 
 binary_lrv: elf_lrv
 	$(foreach elf, $(ELFS), $(OBJCOPY) $(elf) --strip-all -O binary $(patsubst $(TARGET_DIR)/%, $(TARGET_DIR)/%.bin, $(elf));)
-	$(foreach elf, $(ELFS), $(OBJDUMP) -S $(elf) > $(patsubst $(TARGET_DIR)/%, $(TARGET_DIR)/%.asm, $(elf));)
+#	$(foreach elf, $(ELFS), $(OBJDUMP) -S $(elf) > $(patsubst $(TARGET_DIR)/%, $(TARGET_DIR)/%.asm, $(elf));)
 
 build: binary
 

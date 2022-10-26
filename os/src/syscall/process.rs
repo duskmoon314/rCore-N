@@ -153,6 +153,10 @@ pub fn sys_flush_trace() -> isize {
     0
 }
 
+pub fn sys_void() -> isize {
+    0
+}
+
 pub fn sys_init_user_trap() -> isize {
     trace!("init user trap!");
     match current_task()

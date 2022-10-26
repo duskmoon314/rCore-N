@@ -65,7 +65,7 @@ impl Processor {
     }
 
     fn run_next(&self, task: Arc<TaskControlBlock>) {
-        push_trace(RUN_NEXT + task.getpid());
+        // push_trace(RUN_NEXT + task.getpid());
         let idle_task_cx_ptr = self.get_idle_task_cx_ptr();
         trace!(
             "[run next] idle task cx ptr: {:x?}, task cx: {:#x?}",
@@ -99,7 +99,7 @@ impl Processor {
         trace!("[suspend current]");
         if let Some(task) = take_current_task() {
             // ---- hold current PCB lock
-            push_trace(SUSPEND_CURRENT + task.getpid());
+            // push_trace(SUSPEND_CURRENT + task.getpid());
             let mut task_inner = task.acquire_inner_lock();
             // Change status to Ready
             task_inner.task_status = TaskStatus::Ready;
@@ -182,7 +182,7 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 }
 
 pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
-    push_trace(SCHEDULE);
+    // push_trace(SCHEDULE);
     let idle_task_cx_ptr = PROCESSORS[hart_id()].get_idle_task_cx_ptr();
     trace!(
         "[schedule] switched task cx ptr: {:x?}, task cx: {:x?}",

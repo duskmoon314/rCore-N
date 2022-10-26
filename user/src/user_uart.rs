@@ -1,3 +1,4 @@
+use crate::trace::{SERIAL_INTR_ENTER, SERIAL_INTR_EXIT};
 use alloc::collections::VecDeque;
 use core::convert::Infallible;
 use embedded_hal::serial::{Read, Write};
@@ -95,8 +96,19 @@ impl BufferedSerial {
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     pub fn interrupt_handler(&mut self) {
         // println!("[SERIAL] Interrupt!");
+
+        use crate::trace::push_trace;
         let hardware = &self.hardware;
         while let Some(int_type) = hardware.read_interrupt_type() {
+            let intr_id: usize = match int_type {
+                InterruptType::ModemStatus => 0x0000,
+                InterruptType::TransmitterHoldingRegisterEmpty => 0b0010,
+                InterruptType::ReceivedDataAvailable => 0b0100,
+                InterruptType::ReceiverLineStatus => 0b0110,
+                InterruptType::Timeout => 0b1100,
+                InterruptType::Reserved => 0b1000,
+            };
+            push_trace(SERIAL_INTR_ENTER + intr_id);
             self.intr_count += 1;
             match int_type {
                 InterruptType::ReceivedDataAvailable | InterruptType::Timeout => {
@@ -140,6 +152,7 @@ impl BufferedSerial {
                     println!("[USER SERIAL] {:?} not supported!", int_type);
                 }
             }
+            push_trace(SERIAL_INTR_EXIT + intr_id);
         }
     }
 }

@@ -10,7 +10,7 @@ const MAX_USER_TRAP_NUM: usize = 128;
 
 use rv_plic::PLIC;
 
-use crate::trace::{push_trace, TRAP_QUEUE_ENTER, TRAP_QUEUE_EXIT, U_TRAP_HANDLER};
+use crate::trace::{push_trace, TRAP_QUEUE_ENTER, TRAP_QUEUE_EXIT, U_TRAP_HANDLER, U_TRAP_RETURN};
 pub const PLIC_BASE: usize = 0xc00_0000;
 pub const PLIC_PRIORITY_BIT: usize = 3;
 pub type Plic = PLIC<PLIC_BASE, PLIC_PRIORITY_BIT>;
@@ -58,7 +58,7 @@ global_asm!(include_str!("trap.asm"));
 pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
     let ucause = ucause::read();
     let utval = utval::read();
-    push_trace(U_TRAP_HANDLER + ucause.bits());
+    // push_trace(U_TRAP_HANDLER + ucause.bits());
     match ucause.cause() {
         ucause::Trap::Interrupt(ucause::Interrupt::UserSoft) => {
             // push_trace(TRAP_QUEUE_ENTER);
@@ -79,6 +79,7 @@ pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
                     soft_intr_handler(pid, msg);
                 } else if ucause::Interrupt::from(cause) == ucause::Interrupt::UserExternal {
                     let irq = trap_record.message as u16;
+                    // push_trace(U_TRAP_HANDLER | 8 | 128);
                     ext_intr_handler(irq, true);
                 } else if ucause::Interrupt::from(cause) == ucause::Interrupt::UserTimer {
                     timer_intr_handler(msg);
@@ -88,6 +89,7 @@ pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
         }
         ucause::Trap::Interrupt(ucause::Interrupt::UserExternal) => {
             while let Some(irq) = Plic::claim(get_context(hart_id(), 'U')) {
+                // push_trace(U_TRAP_HANDLER | 8 | 128);
                 ext_intr_handler(irq, false);
             }
             // println!("[user trap] user external finished");
@@ -107,6 +109,7 @@ pub fn user_trap_handler(cx: &mut UserTrapContext) -> &mut UserTrapContext {
             );
         }
     }
+    // push_trace(U_TRAP_RETURN + ucause.bits());
     cx
 }
 

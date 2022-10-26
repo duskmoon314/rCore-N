@@ -16,6 +16,7 @@ const SYSCALL_SPAWN: usize = 400;
 const SYSCALL_MAILREAD: usize = 401;
 const SYSCALL_MAILWRITE: usize = 402;
 const SYSCALL_FLUSH_TRACE: usize = 555;
+const SYSCALL_VOID: usize = 556;
 const SYSCALL_INIT_USER_TRAP: usize = 600;
 const SYSCALL_SEND_MSG: usize = 601;
 const SYSCALL_SET_TIMER: usize = 602;
@@ -25,13 +26,13 @@ const SYSCALL_SET_EXT_INT_ENABLE: usize = 604;
 mod fs;
 mod process;
 
-use crate::trace::{push_trace, TRACE_SYSCALL_ENTER, TRACE_SYSCALL_EXIT};
+use crate::trace::{push_trace, TRACE_SYSCALL_S_ENTER, TRACE_SYSCALL_S_EXIT};
 use fs::*;
 use process::*;
 
 pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
     trace!("syscall {}, args {:x?}", syscall_id, args);
-    // push_trace(TRACE_SYSCALL_ENTER + syscall_id);
+    push_trace(TRACE_SYSCALL_S_ENTER + syscall_id);
     let ret = match syscall_id {
         SYSCALL_CLOSE => sys_close(args[0]),
         SYSCALL_PIPE => sys_pipe(args[0] as *mut usize),
@@ -51,6 +52,7 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
         SYSCALL_MAILREAD => sys_mailread(args[0] as *mut u8, args[1]),
         SYSCALL_MAILWRITE => sys_mailwrite(args[0], args[1] as *mut u8, args[2]),
         SYSCALL_FLUSH_TRACE => sys_flush_trace(),
+        SYSCALL_VOID => sys_void(),
         SYSCALL_INIT_USER_TRAP => sys_init_user_trap(),
         SYSCALL_SEND_MSG => sys_send_msg(args[0], args[1]),
         SYSCALL_SET_TIMER => sys_set_timer(args[0]),
@@ -58,6 +60,6 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
         SYSCALL_SET_EXT_INT_ENABLE => sys_set_ext_int_enable(args[0], args[1]),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     };
-    // push_trace(TRACE_SYSCALL_EXIT + syscall_id);
+    push_trace(TRACE_SYSCALL_S_EXIT + syscall_id);
     ret
 }

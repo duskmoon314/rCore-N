@@ -49,7 +49,7 @@ impl UserTrapInfo {
     }
 
     pub fn enable_user_ext_int(&self) {
-        push_trace(ENABLE_USER_EXT_INT_ENTER);
+        // push_trace(ENABLE_USER_EXT_INT_ENTER);
 
         let u_context = get_context(hart_id(), 'U');
         for (device_id, is_enabled) in &self.devices {
@@ -77,11 +77,11 @@ impl UserTrapInfo {
         //         CNT = 0;
         //     }
         // }
-        push_trace(ENABLE_USER_EXT_INT_EXIT);
+        // push_trace(ENABLE_USER_EXT_INT_EXIT);
     }
 
     pub fn disable_user_ext_int(&self) {
-        push_trace(DISABLE_USER_EXT_INT_ENTER);
+        // push_trace(DISABLE_USER_EXT_INT_ENTER);
 
         let hart_id = hart_id();
         for (device_id, is_enabled) in &self.devices {
@@ -107,7 +107,7 @@ impl UserTrapInfo {
         //         CNT = 0;
         //     }
         // }
-        push_trace(DISABLE_USER_EXT_INT_EXIT);
+        // push_trace(DISABLE_USER_EXT_INT_EXIT);
     }
 
     pub fn remove_user_ext_int_map(&self) {
@@ -164,16 +164,16 @@ pub fn push_trap_record(pid: usize, trap_record: UserTrapRecord) -> Result<(), U
             //         send_ipi(&mask as *const _ as usize);
             //     }
             // }
-            push_trace(PUSH_TRAP_RECORD_EXIT);
+            // push_trace(PUSH_TRAP_RECORD_EXIT);
             res
         } else {
             warn!("[push trap record] User trap uninitialized!");
-            push_trace(PUSH_TRAP_RECORD_EXIT);
+            // push_trace(PUSH_TRAP_RECORD_EXIT);
             Err(UserTrapError::TrapUninitialized)
         }
     } else {
         warn!("[push trap record] Task Not Found!");
-        push_trace(PUSH_TRAP_RECORD_EXIT);
+        // push_trace(PUSH_TRAP_RECORD_EXIT);
         Err(UserTrapError::TaskNotFound)
     }
 }

@@ -63,7 +63,16 @@ syscall_name = {
     604: "SET_EXT_INT_ENABLE",
 }
 
-accept_pid = {3, 4, 7, 8, 11, 12, 15, 16}
+serial_call_name = {
+    63: "User Serial Read (Poll)",
+    64: "User Serial Write (Poll)",
+    65: "User Serial Read (Intr)",
+    66: "User Serial Write (Intr)",
+}
+
+kernel_pid = {3, 4, 11, 12}
+
+accept_pid = {3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16}
 
 
 def filter_outlier(data, factor):
@@ -143,10 +152,34 @@ def syscall_stat(rec_dict, enter_id, exit_id):
     return {sid: filter_outlier(stat, 2) for sid, stat in syscall_stat.items()}
 
 
+def serial_stat(rec_dict, enter_id, exit_id):
+    serial_stat = defaultdict(list)
+    for k1 in rec_dict.keys():
+        for sid in rec_dict[k1].keys():
+            print(
+                "key1: {}, serial call: {}, num: {}".format(
+                    k1, serial_call_name[sid], len(rec_dict[k1][sid])
+                )
+            )
+            it1 = iter(rec_dict[k1][sid])
+            for (e1, c1) in it1:
+                # s trap handler
+                if event_subtype(e1) == enter_id:
+                    it2 = copy.copy(it1)
+                    for (e2, c2) in it2:
+                        if event_subtype(e2) == exit_id:
+                            serial_stat[sid].append(c2 - c1)
+                            break
+
+    return {sid: filter_outlier(stat, 2) for sid, stat in serial_stat.items()}
+
+
 if __name__ == "__main__":
     s_trap = {}
     u_trap = {}
     syscall = {}
+    sercall = {}
+    syscall2 = {}
     for hart in range(4):
         s_trap[hart] = defaultdict(list)
 
@@ -166,6 +199,7 @@ if __name__ == "__main__":
                 event_type(e) == 0x57AB
                 and (event_subtype(e) == 2 or event_subtype(e) == 3)
                 and extra(e) != 8
+                and pid(e) in kernel_pid
             ):
                 s_trap[hartid(e)][extra(e)].append((e, c))
 
@@ -184,30 +218,90 @@ if __name__ == "__main__":
                 p = pid(e)
                 if p not in syscall:
                     syscall[p] = defaultdict(list)
+                    syscall2[p] = []
                 if p in accept_pid:
-                    syscall[p][extra(e)].append((e, c))
+                    if event_subtype(e) == 0 or event_subtype(e) == 1:
+                        syscall[p][extra(e)].append((e, c))
+                    syscall2[p].append((e, c))
+
+            # user serial
+            if event_type(e) == 0x5E1A:
+                p = pid(e)
+                if p not in sercall:
+                    sercall[p] = defaultdict(list)
+                if p in accept_pid:
+                    if event_subtype(e) == 2 or event_subtype(e) == 3:
+                        sercall[p][extra(e)].append((e, c))
 
         s_trap_stat = trap_rec_stat(s_trap, 2, 3)
         u_trap_stat = trap_rec_stat(u_trap, 8, 9)
         syscall_stat = syscall_stat(syscall, 0, 1)
+        sercall_stat = serial_stat(sercall, 2, 3)
+
+        it1 = iter(syscall2[4])
+        got = {"READ": False, "WRITE": False}
+        time_stamp = {"READ": {}, "WRITE": {}}
+        for (e1, c1) in it1:
+            # syscall enter
+            if event_subtype(e1) == 0:
+                sid = extra(e1)
+                name = syscall_name[sid]
+                if name != "READ" and name != "WRITE":
+                    continue
+                if got[name]:
+                    continue
+                it2 = copy.copy(it1)
+                for (e2, c2) in it2:
+                    # syscall exit
+                    ts = c2 - c1
+                    if event_subtype(e2) == 1 and extra(e2) == sid:
+                        time_stamp[name]["exit"] = ts
+                        if ts > 25000 and ts < 35000:
+                            got[name] = True
+                        else:
+                            time_stamp[name] = {}
+                        break
+                    elif event_subtype(e2) == 2 and extra(e2) == sid:
+                        time_stamp[name]["s_enter"] = ts
+                    elif event_subtype(e2) == 3 and extra(e2) == sid:
+                        time_stamp[name]["s_exit"] = ts
+                    elif event_subtype(e2) == 4:
+                        time_stamp["WRITE"]["find_fd"] = ts
+                    elif event_subtype(e2) == 5:
+                        time_stamp["WRITE"]["fin"] = ts
+                    elif event_subtype(e2) == 6:
+                        time_stamp["READ"]["find_fd"] = ts
+                    elif event_subtype(e2) == 7:
+                        time_stamp["READ"]["fin"] = ts
+
+        print(time_stamp)
+
+        bins = 1000
 
         for cause in s_trap_stat.keys():
             stat = s_trap_stat[cause]
-            plt.hist(stat, 1000)
+            plt.hist(stat, bins)
             plt.title(trap_cause_name(cause))
             plt.xlabel("cycle")
             plt.show()
 
         for cause in u_trap_stat.keys():
             stat = u_trap_stat[cause]
-            plt.hist(stat, 1000)
+            plt.hist(stat, bins)
             plt.title(trap_cause_name(cause))
             plt.xlabel("cycle")
             plt.show()
 
         for sid in syscall_stat.keys():
             stat = syscall_stat[sid]
-            plt.hist(stat, 1000)
+            plt.hist(stat, bins)
             plt.title(syscall_name[sid])
+            plt.xlabel("cycle")
+            plt.show()
+
+        for sid in sercall_stat.keys():
+            stat = sercall_stat[sid]
+            plt.hist(stat, bins)
+            plt.title(serial_call_name[sid])
             plt.xlabel("cycle")
             plt.show()

@@ -29,10 +29,18 @@ pub const U_TIMER_HANDLER: usize = 0xc7ab_c000;
 // syscall
 pub const TRACE_SYSCALL_ENTER: usize = 0x575c_0000;
 pub const TRACE_SYSCALL_EXIT: usize = 0x575c_1000;
+pub const TRACE_SYSCALL_S_ENTER: usize = 0x575c_2000;
+pub const TRACE_SYSCALL_S_EXIT: usize = 0x575c_3000;
 
 // SBI call
 pub const SEND_IPI_ENTER: usize = 0x5b1c_0000;
 pub const SEND_IPI_EXIT: usize = 0x5b1c_1000;
+
+// Serial Driver
+pub const SERIAL_INTR_ENTER: usize = 0x5e1a_0000;
+pub const SERIAL_INTR_EXIT: usize = 0x5e1a_1000;
+pub const SERIAL_CALL_ENTER: usize = 0x5e1a_2000;
+pub const SERIAL_CALL_EXIT: usize = 0x5e1a_3000;
 
 // misc
 pub const TRACE_TEST: usize = 0x315c_0000;

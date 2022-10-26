@@ -221,6 +221,7 @@ pub fn init() {
     }
     for serial_id in 2..SERIAL_NUM {
         BUFFERED_SERIAL[serial_id].lock().hardware_init(6_250_000);
+        // BUFFERED_SERIAL[serial_id].lock().hardware_init(1_250_000);
     }
 }
 
