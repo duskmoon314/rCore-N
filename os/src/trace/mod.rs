@@ -53,7 +53,7 @@ extern "C" {
 }
 
 pub fn push_trace(event_id: usize) -> usize {
-    let cycle: usize;
+    let mut cycle: usize = 0;
     #[cfg(feature = "board_lrv")]
     unsafe {
         // __push_trace(event_id)
