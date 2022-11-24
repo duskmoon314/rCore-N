@@ -26,7 +26,10 @@ heapless = "0.7.5"
 blake2 = { version = "0.10", default-features = false }
 blake3 = { version = "1.2.0", default-features = false }
 sha2 = { version = "0.10", default-features = false }
+executor = { git = "https://github.com/rcore-os/executor" }
+lrv-pac = { path = "../pac/lrv-pac", optional = true }
+qemu-pac = { path = "../pac/qemu-pac", optional = true }
 
 [features]
-board_qemu = ["uart8250"]
-board_lrv = ["uart_xilinx"]
+board_qemu = ["uart8250", "qemu-pac"]
+board_lrv = ["uart_xilinx", "lrv-pac"]

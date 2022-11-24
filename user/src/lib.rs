@@ -5,6 +5,7 @@
 
 #[macro_use]
 pub mod console;
+pub mod future;
 mod lang_items;
 mod syscall;
 pub mod trace;

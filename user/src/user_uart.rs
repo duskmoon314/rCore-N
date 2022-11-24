@@ -1,8 +1,20 @@
+use crate::future::GetWakerFuture;
 use crate::trace::{SERIAL_INTR_ENTER, SERIAL_INTR_EXIT};
 use alloc::collections::VecDeque;
-use core::convert::Infallible;
+use alloc::sync::Arc;
+use core::future::Future;
+use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::Ordering::Relaxed;
+use core::task::{Context, Poll, Waker};
+use core::{convert::Infallible, pin::Pin, sync::atomic::AtomicBool};
 use embedded_hal::serial::{Read, Write};
+use heapless::spsc;
+#[cfg(feature = "board_lrv")]
+use lrv_pac::uart;
+#[cfg(feature = "board_qemu")]
+use qemu_pac::uart;
 pub use serial_config::*;
+use spin::Mutex;
 
 pub const DEFAULT_TX_BUFFER_SIZE: usize = 1000;
 pub const DEFAULT_RX_BUFFER_SIZE: usize = 1000;
@@ -284,5 +296,330 @@ impl Drop for PollingSerial {
         let _ = hardware.read_lsr();
         // reset Rx & Tx FIFO, disable FIFO
         hardware.write_fcr(0b00_000_11_0);
+    }
+}
+
+type RxProducer = spsc::Producer<'static, u8, DEFAULT_RX_BUFFER_SIZE>;
+type RxConsumer = spsc::Consumer<'static, u8, DEFAULT_RX_BUFFER_SIZE>;
+type TxProducer = spsc::Producer<'static, u8, DEFAULT_TX_BUFFER_SIZE>;
+type TxConsumer = spsc::Consumer<'static, u8, DEFAULT_TX_BUFFER_SIZE>;
+
+pub struct AsyncSerial {
+    base_address: usize,
+    rx_pro: Mutex<RxProducer>,
+    rx_con: Mutex<RxConsumer>,
+    tx_pro: Mutex<TxProducer>,
+    tx_con: Mutex<TxConsumer>,
+    pub rx_count: AtomicUsize,
+    pub tx_count: AtomicUsize,
+    pub intr_count: AtomicUsize,
+    pub rx_intr_count: AtomicUsize,
+    pub tx_intr_count: AtomicUsize,
+    pub(super) rx_intr_enabled: AtomicBool,
+    pub(super) tx_intr_enabled: AtomicBool,
+    read_waker: Mutex<Option<Waker>>,
+    write_waker: Mutex<Option<Waker>>,
+}
+
+impl AsyncSerial {
+    pub fn new(
+        base_address: usize,
+        rx_pro: RxProducer,
+        rx_con: RxConsumer,
+        tx_pro: TxProducer,
+        tx_con: TxConsumer,
+    ) -> Self {
+        AsyncSerial {
+            base_address,
+            rx_pro: Mutex::new(rx_pro),
+            rx_con: Mutex::new(rx_con),
+            tx_pro: Mutex::new(tx_pro),
+            tx_con: Mutex::new(tx_con),
+            rx_count: AtomicUsize::new(0),
+            tx_count: AtomicUsize::new(0),
+            intr_count: AtomicUsize::new(0),
+            rx_intr_count: AtomicUsize::new(0),
+            tx_intr_count: AtomicUsize::new(0),
+            rx_intr_enabled: AtomicBool::new(false),
+            tx_intr_enabled: AtomicBool::new(false),
+            read_waker: Mutex::new(None),
+            write_waker: Mutex::new(None),
+        }
+    }
+
+    fn hardware(&self) -> &uart::RegisterBlock {
+        unsafe { &*(self.base_address as *const _) }
+    }
+
+    fn set_divisor(&self, clock: usize, baud_rate: usize) {
+        let block = self.hardware();
+        let divisor = clock / (16 * baud_rate);
+        block.lcr.write(|w| w.dlab().set_bit());
+        #[cfg(feature = "board_lrv")]
+        {
+            block
+                .dll()
+                .write(|w| unsafe { w.bits((divisor & 0b1111_1111) as u32) });
+            block
+                .dlh()
+                .write(|w| unsafe { w.bits(((divisor >> 8) & 0b1111_1111) as u32) });
+        }
+        #[cfg(feature = "board_qemu")]
+        {
+            block
+                .dll()
+                .write(|w| unsafe { w.bits((divisor & 0b1111_1111) as u8) });
+            block
+                .dlh()
+                .write(|w| unsafe { w.bits(((divisor >> 8) & 0b1111_1111) as u8) });
+        }
+
+        block.lcr.write(|w| w.dlab().clear_bit());
+    }
+
+    pub(super) fn enable_rdai(&self) {
+        self.hardware().ier().write(|w| w.erbfi().set_bit());
+        self.rx_intr_enabled.store(true, Relaxed);
+    }
+
+    fn disable_rdai(&self) {
+        self.hardware().ier().write(|w| w.erbfi().clear_bit());
+        self.rx_intr_enabled.store(false, Relaxed);
+    }
+
+    pub(super) fn enable_threi(&self) {
+        self.hardware().ier().write(|w| w.etbei().set_bit());
+        self.tx_intr_enabled.store(true, Relaxed);
+    }
+
+    fn disable_threi(&self) {
+        self.hardware().ier().write(|w| w.etbei().clear_bit());
+        self.tx_intr_enabled.store(false, Relaxed);
+    }
+
+    fn try_recv(&self) -> Option<u8> {
+        let block = self.hardware();
+        if block.lsr.read().dr().bit_is_set() {
+            Some(block.rbr().read().bits() as _)
+        } else {
+            None
+        }
+    }
+
+    fn send(&self, ch: u8) {
+        let block = self.hardware();
+        block.thr().write(|w| w.thr().variant(ch));
+    }
+
+    pub(super) fn try_read(&self) -> Option<u8> {
+        if let Some(mut rx_lock) = self.rx_con.try_lock() {
+            rx_lock.dequeue()
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn try_write(&self, ch: u8) -> Result<(), u8> {
+        if let Some(mut tx_lock) = self.tx_pro.try_lock() {
+            tx_lock.enqueue(ch)
+        } else {
+            Err(ch)
+        }
+    }
+
+    pub fn hardware_init(&self, baud_rate: usize) {
+        let block = self.hardware();
+        let _unused = block.msr.read().bits();
+        let _unused = block.lsr.read().bits();
+        block.ier().reset();
+        // No modem control
+        block.mcr.reset();
+        // Enable DLAB and Set divisor
+        self.set_divisor(100_000_000, baud_rate);
+        // Disable DLAB and set word length 8 bits, no parity, 1 stop bit
+        block.lcr.write(|w| w.dls().eight());
+        // Enable FIFO
+        block.fcr().write(|w| {
+            w.fifoe()
+                .set_bit()
+                .rfifor()
+                .set_bit()
+                .xfifor()
+                .set_bit()
+                .rt()
+                .half_full()
+        });
+
+        // Enable received_data_available_interrupt
+        self.enable_rdai();
+        // Enable transmitter_holding_register_empty_interrupt
+        // self.enable_transmitter_holding_register_empty_interrupt();
+    }
+
+    #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+    pub fn interrupt_handler(&self) {
+        // println!("[SERIAL] Interrupt!");
+
+        use uart::iir::IID_A;
+
+        use crate::trace::push_trace;
+        let block = self.hardware();
+        while let Some(int_type) = block.iir().read().iid().variant() {
+            if int_type == IID_A::NO_INTERRUPT_PENDING {
+                break;
+            }
+            let intr_id: usize = int_type as u8 as _;
+            push_trace(SERIAL_INTR_ENTER + intr_id);
+            self.intr_count.fetch_add(1, Relaxed);
+            match int_type {
+                IID_A::RECEIVED_DATA_AVAILABLE | IID_A::CHARACTER_TIMEOUT => {
+                    // println!("[SERIAL] Received data available");
+                    self.rx_intr_count.fetch_add(1, Relaxed);
+                    let mut rx_count = 0;
+                    while let Some(ch) = self.try_recv() {
+                        if let Ok(()) = self.rx_pro.lock().enqueue(ch) {
+                            rx_count += 1;
+                        } else {
+                            // println!("[USER UART] Serial rx buffer overflow!");
+                            self.disable_rdai();
+                            break;
+                        }
+                    }
+                    self.rx_count.fetch_add(rx_count, Relaxed);
+                    if let Some(mut waker) = self.read_waker.try_lock() {
+                        if waker.is_some() {
+                            waker.take().unwrap().wake();
+                        }
+                    }
+                }
+                IID_A::THR_EMPTY => {
+                    // println!("[SERIAL] Transmitter Holding Register Empty");
+                    self.tx_intr_count.fetch_add(1, Relaxed);
+                    let mut tx_count = 0;
+                    for _ in 0..FIFO_DEPTH {
+                        if let Some(ch) = self.tx_con.lock().dequeue() {
+                            self.send(ch);
+                            tx_count += 1;
+                        } else {
+                            self.disable_threi();
+                            break;
+                        }
+                    }
+                    self.tx_count.fetch_add(tx_count, Relaxed);
+                    if let Some(mut waker) = self.write_waker.try_lock() {
+                        if waker.is_some() {
+                            waker.take().unwrap().wake();
+                        }
+                    }
+                }
+                IID_A::MODEM_STATUS => {
+                    println!(
+                        "[USER SERIAL] MSR: {:#x}, LSR: {:#x}, IER: {:#x}",
+                        block.msr.read().bits(),
+                        block.lsr.read().bits(),
+                        block.ier().read().bits()
+                    );
+                }
+                _ => {
+                    println!("[USER SERIAL] {:?} not supported!", int_type);
+                }
+            }
+            push_trace(SERIAL_INTR_EXIT + intr_id);
+        }
+    }
+
+    async fn register_read(&self) {
+        let raw_waker = GetWakerFuture.await;
+        self.read_waker.lock().replace(raw_waker);
+    }
+
+    pub async fn read(self: Arc<Self>, buf: &mut [u8]) {
+        let future = SerialReadFuture {
+            buf,
+            read_len: 0,
+            driver: self.clone(),
+        };
+        self.register_read().await;
+        future.await;
+    }
+
+    async fn register_write(&self) {
+        let raw_waker = GetWakerFuture.await;
+        self.write_waker.lock().replace(raw_waker);
+    }
+
+    pub async fn write(self: Arc<Self>, buf: &[u8]) {
+        let future = SerialWriteFuture {
+            buf,
+            write_len: 0,
+            driver: self.clone(),
+        };
+        self.register_write().await;
+        future.await;
+    }
+}
+
+impl Drop for AsyncSerial {
+    fn drop(&mut self) {
+        let block = self.hardware();
+        block.ier().reset();
+        let _unused = block.msr.read().bits();
+        let _unused = block.lsr.read().bits();
+        // reset Rx & Tx FIFO, disable FIFO
+        block
+            .fcr()
+            .write(|w| w.fifoe().clear_bit().rt().one_character());
+    }
+}
+
+struct SerialReadFuture<'a> {
+    buf: &'a mut [u8],
+    read_len: usize,
+    driver: Arc<AsyncSerial>,
+}
+
+impl Future for SerialReadFuture<'_> {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        while let Some(data) = self.driver.try_read() {
+            if self.read_len < self.buf.len() {
+                let len = self.read_len;
+                self.buf[len] = data;
+                self.read_len += 1;
+            } else {
+                return Poll::Ready(());
+            }
+        }
+
+        if !self.driver.rx_intr_enabled.load(Relaxed) {
+            self.driver.enable_rdai();
+        }
+        Poll::Pending
+    }
+}
+
+struct SerialWriteFuture<'a> {
+    buf: &'a [u8],
+    write_len: usize,
+    driver: Arc<AsyncSerial>,
+}
+
+impl Future for SerialWriteFuture<'_> {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        while let Ok(()) = self.driver.try_write(self.buf[self.write_len]) {
+            if self.write_len < self.buf.len() - 1 {
+                self.write_len += 1;
+            } else {
+                return Poll::Ready(());
+            }
+        }
+
+        if !self.driver.tx_intr_enabled.load(Relaxed) {
+            self.driver.enable_threi();
+        }
+        Poll::Pending
     }
 }

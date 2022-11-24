@@ -5,9 +5,12 @@
 extern crate user_lib;
 extern crate alloc;
 
+use alloc::sync::Arc;
 use bitflags::bitflags;
-use core::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering::Relaxed};
+use core::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicUsize, Ordering::Relaxed};
 use embedded_hal::serial::{Read, Write};
+use executor::spawn;
+use heapless::spsc::Queue;
 use lazy_static::*;
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
@@ -56,7 +59,8 @@ bitflags! {
         const INTR_MODE = 0b100;
         const UART3 = 0b1000;
         const UART4 = 0b10000;
-        const ALL_MODE = Self::KERNEL_MODE.bits | Self::POLLING_MODE.bits | Self::INTR_MODE.bits;
+        const ASYNC_MODE = 0b10_0000;
+        const ALL_MODE = Self::ASYNC_MODE.bits | Self::KERNEL_MODE.bits | Self::POLLING_MODE.bits | Self::INTR_MODE.bits;
     }
 }
 
@@ -77,6 +81,7 @@ pub fn main() -> i32 {
         Some(UartLoadConfig::KERNEL_MODE) => kernel_driver_test(),
         Some(UartLoadConfig::POLLING_MODE) => user_polling_test(),
         Some(UartLoadConfig::INTR_MODE) => user_intr_test(),
+        Some(UartLoadConfig::ASYNC_MODE) => user_async_test(),
         _ => {
             println!("[uart load] Mode not supported!");
             (0, 0, 0)
@@ -280,6 +285,115 @@ fn user_intr_test() -> (usize, usize, usize) {
         serial.intr_count, serial.tx_intr_count, serial.rx_intr_count, err_pos,
     );
     (serial.rx_count, serial.tx_count, error_count)
+}
+
+static ERROR_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+async fn read_task(serial: Arc<AsyncSerial>) {
+    let mut error_count = 0;
+    let mut rx_buf = [0; HALF_FIFO_DEPTH];
+    serial.read(&mut rx_buf).await;
+    let mut rx_rng = RX_RNG.lock();
+    let mut expect_rx = rx_rng.next_u32();
+
+    for rx_val in rx_buf {
+        let mut max_shift = MAX_SHIFT;
+        while rx_val != expect_rx as u8 && max_shift > 0 {
+            error_count += 1;
+            max_shift -= 1;
+            expect_rx = rx_rng.next_u32();
+        }
+        // hasher.update(&[rx_val]);
+        expect_rx = rx_rng.next_u32();
+    }
+    ERROR_COUNT.fetch_add(error_count, Relaxed);
+}
+
+async fn write_task(serial: Arc<AsyncSerial>) {
+    let mut tx_rng = TX_RNG.lock();
+    let tx_buf: [u8; HALF_FIFO_DEPTH] = array_init::array_init(|_| tx_rng.next_u32() as _);
+    serial.write(&tx_buf).await;
+}
+
+fn user_async_test() -> (usize, usize, usize) {
+    unsafe {
+        uie::clear_uext();
+        uie::clear_usoft();
+        uie::clear_utimer();
+    }
+    let mut hasher = Hasher::new();
+    let uart_irqn = UART_IRQN.load(Relaxed);
+    let claim_res = claim_ext_int(uart_irqn as usize);
+    type RxBuffer = Queue<u8, DEFAULT_RX_BUFFER_SIZE>;
+    type TxBuffer = Queue<u8, DEFAULT_TX_BUFFER_SIZE>;
+    static mut DRIVER_RX_BUFFER: RxBuffer = RxBuffer::new();
+    static mut DRIVER_TX_BUFFER: TxBuffer = TxBuffer::new();
+    let (rx_pro, rx_con) = unsafe { DRIVER_RX_BUFFER.split() };
+    let (tx_pro, tx_con) = unsafe { DRIVER_TX_BUFFER.split() };
+
+    let serial = Arc::new(AsyncSerial::new(
+        get_base_addr_from_irq(uart_irqn),
+        rx_pro,
+        rx_con,
+        tx_pro,
+        tx_con,
+    ));
+    serial.hardware_init(BAUD_RATE);
+    let en_res = set_ext_int_enable(uart_irqn as usize, 1);
+    println!(
+        "[uart load] Async mode, claim result: {:#x}, enable res: {:#x}",
+        claim_res, en_res
+    );
+    let mut err_pos = -1;
+
+    let time_us = get_time() * 1000;
+    set_timer(time_us + TEST_TIME_US);
+    unsafe {
+        uie::set_uext();
+        uie::set_usoft();
+        uie::set_utimer();
+    }
+
+    while !(IS_TIMEOUT.load(Relaxed)) {
+        push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_READ);
+        if executor::run_until_idle() {
+            spawn(read_task(serial.clone()));
+            spawn(write_task(serial.clone()));
+        }
+        push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_READ);
+
+        push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_WRITE);
+
+        push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_WRITE);
+
+        if HAS_INTR.load(Relaxed) {
+            serial.interrupt_handler();
+            push_trace(U_TRAP_RETURN | 8 | 128);
+            HAS_INTR.store(false, Relaxed);
+            Plic::complete(get_context(hart_id(), 'U'), uart_irqn);
+        }
+    }
+    unsafe {
+        uie::clear_uext();
+        uie::clear_usoft();
+        uie::clear_utimer();
+    }
+
+    if uart_irqn == 14 || uart_irqn == 6 {
+        sleep(500);
+    }
+    println!(
+        "[uart load] Intr count: {}, Tx: {}, Rx: {}, err pos: {}",
+        serial.intr_count.load(Relaxed),
+        serial.tx_intr_count.load(Relaxed),
+        serial.rx_intr_count.load(Relaxed),
+        err_pos,
+    );
+    (
+        serial.rx_count.load(Relaxed),
+        serial.tx_count.load(Relaxed),
+        ERROR_COUNT.load(Relaxed),
+    )
 }
 
 mod user_trap {
