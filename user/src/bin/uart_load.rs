@@ -166,6 +166,7 @@ fn user_polling_test() -> (usize, usize, usize) {
     let mut err_pos = -1;
     let mut next_tx = tx_rng.next_u32();
     let mut expect_rx = rx_rng.next_u32();
+    let mut empty_read = 0;
 
     let time_us = get_time() * 1000;
     set_timer(time_us + TEST_TIME_US);
@@ -193,6 +194,8 @@ fn user_polling_test() -> (usize, usize, usize) {
                 }
                 // hasher.update(&[rx_val]);
                 expect_rx = rx_rng.next_u32();
+            } else {
+                empty_read += 1;
             }
         }
         push_trace(SERIAL_CALL_EXIT + SERIAL_POLL_WRITE);
@@ -201,7 +204,10 @@ fn user_polling_test() -> (usize, usize, usize) {
     if uart_irqn == 14 || uart_irqn == 6 {
         sleep(500);
     }
-    println!("[uart load] err pos: {}", err_pos);
+    println!(
+        "[uart load] err pos: {}, empty read: {}",
+        err_pos, empty_read
+    );
     (serial.rx_count, serial.tx_count, error_count)
 }
 
@@ -346,6 +352,8 @@ fn user_async_test() -> (usize, usize, usize) {
     );
     let mut err_pos = -1;
 
+    let (reader, writer) = (executor::Executor::default(), executor::Executor::default());
+
     let time_us = get_time() * 1000;
     set_timer(time_us + TEST_TIME_US);
     unsafe {
@@ -356,14 +364,17 @@ fn user_async_test() -> (usize, usize, usize) {
 
     while !(IS_TIMEOUT.load(Relaxed)) {
         push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_READ);
-        if executor::run_until_idle() {
-            spawn(read_task(serial.clone()));
-            spawn(write_task(serial.clone()));
+        if !reader.run_until_idle() {
+            // println!("[uart load] spawn read tasks");
+            reader.spawn(read_task(serial.clone()));
         }
         push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_READ);
 
         push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_WRITE);
-
+        if !writer.run_until_idle() {
+            // println!("[uart load] spawn write tasks");
+            writer.spawn(write_task(serial.clone()));
+        }
         push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_WRITE);
 
         if HAS_INTR.load(Relaxed) {
