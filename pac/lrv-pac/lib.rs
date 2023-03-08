@@ -1338,107 +1338,6 @@ pub mod uart {
                 self.variant(EDSSI_A::ENABLE)
             }
         }
-        #[doc = "Field `rs485_int_en` reader - RS485 Interrupt Enable"]
-        pub type RS485_INT_EN_R = crate::BitReader<RS485_INT_EN_A>;
-        #[doc = "RS485 Interrupt Enable\n\nValue on reset: 0"]
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-        pub enum RS485_INT_EN_A {
-            #[doc = "0: `0`"]
-            DISABLE = 0,
-            #[doc = "1: `1`"]
-            ENABLE = 1,
-        }
-        impl From<RS485_INT_EN_A> for bool {
-            #[inline(always)]
-            fn from(variant: RS485_INT_EN_A) -> Self {
-                variant as u8 != 0
-            }
-        }
-        impl RS485_INT_EN_R {
-            #[doc = "Get enumerated values variant"]
-            #[inline(always)]
-            pub fn variant(&self) -> RS485_INT_EN_A {
-                match self.bits {
-                    false => RS485_INT_EN_A::DISABLE,
-                    true => RS485_INT_EN_A::ENABLE,
-                }
-            }
-            #[doc = "Checks if the value of the field is `DISABLE`"]
-            #[inline(always)]
-            pub fn is_disable(&self) -> bool {
-                *self == RS485_INT_EN_A::DISABLE
-            }
-            #[doc = "Checks if the value of the field is `ENABLE`"]
-            #[inline(always)]
-            pub fn is_enable(&self) -> bool {
-                *self == RS485_INT_EN_A::ENABLE
-            }
-        }
-        #[doc = "Field `rs485_int_en` writer - RS485 Interrupt Enable"]
-        pub type RS485_INT_EN_W<'a, const O: u8> =
-            crate::BitWriter<'a, u32, IER_SPEC, RS485_INT_EN_A, O>;
-        impl<'a, const O: u8> RS485_INT_EN_W<'a, O> {
-            #[doc = "`0`"]
-            #[inline(always)]
-            pub fn disable(self) -> &'a mut W {
-                self.variant(RS485_INT_EN_A::DISABLE)
-            }
-            #[doc = "`1`"]
-            #[inline(always)]
-            pub fn enable(self) -> &'a mut W {
-                self.variant(RS485_INT_EN_A::ENABLE)
-            }
-        }
-        #[doc = "Field `ptime` reader - Programmable THRE Interrupt Mode Enable"]
-        pub type PTIME_R = crate::BitReader<PTIME_A>;
-        #[doc = "Programmable THRE Interrupt Mode Enable\n\nValue on reset: 0"]
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-        pub enum PTIME_A {
-            #[doc = "0: `0`"]
-            DISABLE = 0,
-            #[doc = "1: `1`"]
-            ENABLE = 1,
-        }
-        impl From<PTIME_A> for bool {
-            #[inline(always)]
-            fn from(variant: PTIME_A) -> Self {
-                variant as u8 != 0
-            }
-        }
-        impl PTIME_R {
-            #[doc = "Get enumerated values variant"]
-            #[inline(always)]
-            pub fn variant(&self) -> PTIME_A {
-                match self.bits {
-                    false => PTIME_A::DISABLE,
-                    true => PTIME_A::ENABLE,
-                }
-            }
-            #[doc = "Checks if the value of the field is `DISABLE`"]
-            #[inline(always)]
-            pub fn is_disable(&self) -> bool {
-                *self == PTIME_A::DISABLE
-            }
-            #[doc = "Checks if the value of the field is `ENABLE`"]
-            #[inline(always)]
-            pub fn is_enable(&self) -> bool {
-                *self == PTIME_A::ENABLE
-            }
-        }
-        #[doc = "Field `ptime` writer - Programmable THRE Interrupt Mode Enable"]
-        pub type PTIME_W<'a, const O: u8> = crate::BitWriter<'a, u32, IER_SPEC, PTIME_A, O>;
-        impl<'a, const O: u8> PTIME_W<'a, O> {
-            #[doc = "`0`"]
-            #[inline(always)]
-            pub fn disable(self) -> &'a mut W {
-                self.variant(PTIME_A::DISABLE)
-            }
-            #[doc = "`1`"]
-            #[inline(always)]
-            pub fn enable(self) -> &'a mut W {
-                self.variant(PTIME_A::ENABLE)
-            }
-        }
         impl R {
             #[doc = "Bit 0 - Enable Received Data Available Interrupt"]
             #[inline(always)]
@@ -1459,16 +1358,6 @@ pub mod uart {
             #[inline(always)]
             pub fn edssi(&self) -> EDSSI_R {
                 EDSSI_R::new(((self.bits >> 3) & 1) != 0)
-            }
-            #[doc = "Bit 4 - RS485 Interrupt Enable"]
-            #[inline(always)]
-            pub fn rs485_int_en(&self) -> RS485_INT_EN_R {
-                RS485_INT_EN_R::new(((self.bits >> 4) & 1) != 0)
-            }
-            #[doc = "Bit 7 - Programmable THRE Interrupt Mode Enable"]
-            #[inline(always)]
-            pub fn ptime(&self) -> PTIME_R {
-                PTIME_R::new(((self.bits >> 7) & 1) != 0)
             }
         }
         impl W {
@@ -1495,18 +1384,6 @@ pub mod uart {
             #[must_use]
             pub fn edssi(&mut self) -> EDSSI_W<3> {
                 EDSSI_W::new(self)
-            }
-            #[doc = "Bit 4 - RS485 Interrupt Enable"]
-            #[inline(always)]
-            #[must_use]
-            pub fn rs485_int_en(&mut self) -> RS485_INT_EN_W<4> {
-                RS485_INT_EN_W::new(self)
-            }
-            #[doc = "Bit 7 - Programmable THRE Interrupt Mode Enable"]
-            #[inline(always)]
-            #[must_use]
-            pub fn ptime(&mut self) -> PTIME_W<7> {
-                PTIME_W::new(self)
             }
             #[doc = "Writes raw bits to the register."]
             #[inline(always)]
@@ -1566,14 +1443,10 @@ pub mod uart {
             NO_INTERRUPT_PENDING = 1,
             #[doc = "2: `10`"]
             THR_EMPTY = 2,
-            #[doc = "3: `11`"]
-            RS485_INTERRUPT = 3,
             #[doc = "4: `100`"]
             RECEIVED_DATA_AVAILABLE = 4,
             #[doc = "6: `110`"]
             RECEIVER_LINE_STATUS = 6,
-            #[doc = "7: `111`"]
-            BUSY_DETECT = 7,
             #[doc = "12: `1100`"]
             CHARACTER_TIMEOUT = 12,
         }
@@ -1591,10 +1464,8 @@ pub mod uart {
                     0 => Some(IID_A::MODEM_STATUS),
                     1 => Some(IID_A::NO_INTERRUPT_PENDING),
                     2 => Some(IID_A::THR_EMPTY),
-                    3 => Some(IID_A::RS485_INTERRUPT),
                     4 => Some(IID_A::RECEIVED_DATA_AVAILABLE),
                     6 => Some(IID_A::RECEIVER_LINE_STATUS),
-                    7 => Some(IID_A::BUSY_DETECT),
                     12 => Some(IID_A::CHARACTER_TIMEOUT),
                     _ => None,
                 }
@@ -1614,11 +1485,6 @@ pub mod uart {
             pub fn is_thr_empty(&self) -> bool {
                 *self == IID_A::THR_EMPTY
             }
-            #[doc = "Checks if the value of the field is `RS485_INTERRUPT`"]
-            #[inline(always)]
-            pub fn is_rs485_interrupt(&self) -> bool {
-                *self == IID_A::RS485_INTERRUPT
-            }
             #[doc = "Checks if the value of the field is `RECEIVED_DATA_AVAILABLE`"]
             #[inline(always)]
             pub fn is_received_data_available(&self) -> bool {
@@ -1628,11 +1494,6 @@ pub mod uart {
             #[inline(always)]
             pub fn is_receiver_line_status(&self) -> bool {
                 *self == IID_A::RECEIVER_LINE_STATUS
-            }
-            #[doc = "Checks if the value of the field is `BUSY_DETECT`"]
-            #[inline(always)]
-            pub fn is_busy_detect(&self) -> bool {
-                *self == IID_A::BUSY_DETECT
             }
             #[doc = "Checks if the value of the field is `CHARACTER_TIMEOUT`"]
             #[inline(always)]
@@ -1766,50 +1627,6 @@ pub mod uart {
         #[doc = "\n\nValue on reset: 0"]
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         #[repr(u8)]
-        pub enum TFT_AW {
-            #[doc = "0: `0`"]
-            EMPTY = 0,
-            #[doc = "1: `1`"]
-            TWO_CHARACTERS = 1,
-            #[doc = "2: `10`"]
-            QUARTER_FULL = 2,
-            #[doc = "3: `11`"]
-            HALF_FULL = 3,
-        }
-        impl From<TFT_AW> for u8 {
-            #[inline(always)]
-            fn from(variant: TFT_AW) -> Self {
-                variant as _
-            }
-        }
-        #[doc = "Field `tft` writer - "]
-        pub type TFT_W<'a, const O: u8> =
-            crate::FieldWriterSafe<'a, u32, FCR_SPEC, u8, TFT_AW, 2, O>;
-        impl<'a, const O: u8> TFT_W<'a, O> {
-            #[doc = "`0`"]
-            #[inline(always)]
-            pub fn empty(self) -> &'a mut W {
-                self.variant(TFT_AW::EMPTY)
-            }
-            #[doc = "`1`"]
-            #[inline(always)]
-            pub fn two_characters(self) -> &'a mut W {
-                self.variant(TFT_AW::TWO_CHARACTERS)
-            }
-            #[doc = "`10`"]
-            #[inline(always)]
-            pub fn quarter_full(self) -> &'a mut W {
-                self.variant(TFT_AW::QUARTER_FULL)
-            }
-            #[doc = "`11`"]
-            #[inline(always)]
-            pub fn half_full(self) -> &'a mut W {
-                self.variant(TFT_AW::HALF_FULL)
-            }
-        }
-        #[doc = "\n\nValue on reset: 0"]
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-        #[repr(u8)]
         pub enum RT_AW {
             #[doc = "0: `0`"]
             ONE_CHARACTER = 0,
@@ -1874,12 +1691,6 @@ pub mod uart {
             #[must_use]
             pub fn dmam(&mut self) -> DMAM_W<3> {
                 DMAM_W::new(self)
-            }
-            #[doc = "Bits 4:5"]
-            #[inline(always)]
-            #[must_use]
-            pub fn tft(&mut self) -> TFT_W<4> {
-                TFT_W::new(self)
             }
             #[doc = "Bits 6:7"]
             #[inline(always)]
@@ -2548,122 +2359,6 @@ pub mod uart {
                 self.variant(LOOP_A::LOOP_BACK)
             }
         }
-        #[doc = "Field `afce` reader - Auto Flow Control Enable"]
-        pub type AFCE_R = crate::BitReader<AFCE_A>;
-        #[doc = "Auto Flow Control Enable\n\nValue on reset: 0"]
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-        pub enum AFCE_A {
-            #[doc = "0: `0`"]
-            DISABLED = 0,
-            #[doc = "1: `1`"]
-            ENABLED = 1,
-        }
-        impl From<AFCE_A> for bool {
-            #[inline(always)]
-            fn from(variant: AFCE_A) -> Self {
-                variant as u8 != 0
-            }
-        }
-        impl AFCE_R {
-            #[doc = "Get enumerated values variant"]
-            #[inline(always)]
-            pub fn variant(&self) -> AFCE_A {
-                match self.bits {
-                    false => AFCE_A::DISABLED,
-                    true => AFCE_A::ENABLED,
-                }
-            }
-            #[doc = "Checks if the value of the field is `DISABLED`"]
-            #[inline(always)]
-            pub fn is_disabled(&self) -> bool {
-                *self == AFCE_A::DISABLED
-            }
-            #[doc = "Checks if the value of the field is `ENABLED`"]
-            #[inline(always)]
-            pub fn is_enabled(&self) -> bool {
-                *self == AFCE_A::ENABLED
-            }
-        }
-        #[doc = "Field `afce` writer - Auto Flow Control Enable"]
-        pub type AFCE_W<'a, const O: u8> = crate::BitWriter<'a, u32, MCR_SPEC, AFCE_A, O>;
-        impl<'a, const O: u8> AFCE_W<'a, O> {
-            #[doc = "`0`"]
-            #[inline(always)]
-            pub fn disabled(self) -> &'a mut W {
-                self.variant(AFCE_A::DISABLED)
-            }
-            #[doc = "`1`"]
-            #[inline(always)]
-            pub fn enabled(self) -> &'a mut W {
-                self.variant(AFCE_A::ENABLED)
-            }
-        }
-        #[doc = "Field `function` reader - UART Function: Select IrDA or RS485"]
-        pub type FUNCTION_R = crate::FieldReader<u8, FUNCTION_A>;
-        #[doc = "UART Function: Select IrDA or RS485\n\nValue on reset: 0"]
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-        #[repr(u8)]
-        pub enum FUNCTION_A {
-            #[doc = "0: `0`"]
-            UART = 0,
-            #[doc = "1: `1`"]
-            IR_DA_SIR = 1,
-            #[doc = "2: `10`"]
-            RS485 = 2,
-        }
-        impl From<FUNCTION_A> for u8 {
-            #[inline(always)]
-            fn from(variant: FUNCTION_A) -> Self {
-                variant as _
-            }
-        }
-        impl FUNCTION_R {
-            #[doc = "Get enumerated values variant"]
-            #[inline(always)]
-            pub fn variant(&self) -> FUNCTION_A {
-                match self.bits {
-                    0 => FUNCTION_A::UART,
-                    1 => FUNCTION_A::IR_DA_SIR,
-                    2 => FUNCTION_A::RS485,
-                    _ => unreachable!(),
-                }
-            }
-            #[doc = "Checks if the value of the field is `UART`"]
-            #[inline(always)]
-            pub fn is_uart(&self) -> bool {
-                *self == FUNCTION_A::UART
-            }
-            #[doc = "Checks if the value of the field is `IR_DA_SIR`"]
-            #[inline(always)]
-            pub fn is_ir_da_sir(&self) -> bool {
-                *self == FUNCTION_A::IR_DA_SIR
-            }
-            #[doc = "Checks if the value of the field is `RS485`"]
-            #[inline(always)]
-            pub fn is_rs485(&self) -> bool {
-                *self == FUNCTION_A::RS485
-            }
-        }
-        #[doc = "Field `function` writer - UART Function: Select IrDA or RS485"]
-        pub type FUNCTION_W<'a, const O: u8> =
-            crate::FieldWriter<'a, u32, MCR_SPEC, u8, FUNCTION_A, 2, O>;
-        impl<'a, const O: u8> FUNCTION_W<'a, O> {
-            #[doc = "`0`"]
-            #[inline(always)]
-            pub fn uart(self) -> &'a mut W {
-                self.variant(FUNCTION_A::UART)
-            }
-            #[doc = "`1`"]
-            #[inline(always)]
-            pub fn ir_da_sir(self) -> &'a mut W {
-                self.variant(FUNCTION_A::IR_DA_SIR)
-            }
-            #[doc = "`10`"]
-            #[inline(always)]
-            pub fn rs485(self) -> &'a mut W {
-                self.variant(FUNCTION_A::RS485)
-            }
-        }
         impl R {
             #[doc = "Bit 0 - Data Terminal Ready"]
             #[inline(always)]
@@ -2679,16 +2374,6 @@ pub mod uart {
             #[inline(always)]
             pub fn loop_(&self) -> LOOP_R {
                 LOOP_R::new(((self.bits >> 4) & 1) != 0)
-            }
-            #[doc = "Bit 5 - Auto Flow Control Enable"]
-            #[inline(always)]
-            pub fn afce(&self) -> AFCE_R {
-                AFCE_R::new(((self.bits >> 5) & 1) != 0)
-            }
-            #[doc = "Bits 6:7 - UART Function: Select IrDA or RS485"]
-            #[inline(always)]
-            pub fn function(&self) -> FUNCTION_R {
-                FUNCTION_R::new(((self.bits >> 6) & 3) as u8)
             }
         }
         impl W {
@@ -2709,18 +2394,6 @@ pub mod uart {
             #[must_use]
             pub fn loop_(&mut self) -> LOOP_W<4> {
                 LOOP_W::new(self)
-            }
-            #[doc = "Bit 5 - Auto Flow Control Enable"]
-            #[inline(always)]
-            #[must_use]
-            pub fn afce(&mut self) -> AFCE_W<5> {
-                AFCE_W::new(self)
-            }
-            #[doc = "Bits 6:7 - UART Function: Select IrDA or RS485"]
-            #[inline(always)]
-            #[must_use]
-            pub fn function(&mut self) -> FUNCTION_W<6> {
-                FUNCTION_W::new(self)
             }
             #[doc = "Writes raw bits to the register."]
             #[inline(always)]
@@ -2749,7 +2422,7 @@ pub mod uart {
             const RESET_VALUE: Self::Ux = 0;
         }
     }
-    #[doc = "lsr (r) register accessor: an alias for `Reg<LSR_SPEC>`"]
+    #[doc = "lsr (rw) register accessor: an alias for `Reg<LSR_SPEC>`"]
     pub type LSR = crate::Reg<lsr::LSR_SPEC>;
     #[doc = "UART Line Status Register"]
     pub mod lsr {
@@ -2766,6 +2439,27 @@ pub mod uart {
             #[inline(always)]
             fn from(reader: crate::R<LSR_SPEC>) -> Self {
                 R(reader)
+            }
+        }
+        #[doc = "Register `lsr` writer"]
+        pub struct W(crate::W<LSR_SPEC>);
+        impl core::ops::Deref for W {
+            type Target = crate::W<LSR_SPEC>;
+            #[inline(always)]
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+        impl core::ops::DerefMut for W {
+            #[inline(always)]
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
+        impl From<crate::W<LSR_SPEC>> for W {
+            #[inline(always)]
+            fn from(writer: crate::W<LSR_SPEC>) -> Self {
+                W(writer)
             }
         }
         #[doc = "Field `dr` reader - Data Ready"]
@@ -2797,6 +2491,15 @@ pub mod uart {
                 *self == DR_A::READY
             }
         }
+        #[doc = "Field `dr` writer - Data Ready"]
+        pub type DR_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, DR_A, O>;
+        impl<'a, const O: u8> DR_W<'a, O> {
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn ready(self) -> &'a mut W {
+                self.variant(DR_A::READY)
+            }
+        }
         #[doc = "Field `oe` reader - Overrun Error"]
         pub type OE_R = crate::BitReader<OE_A>;
         #[doc = "Overrun Error\n\nValue on reset: 0"]
@@ -2824,6 +2527,15 @@ pub mod uart {
             #[inline(always)]
             pub fn is_error(&self) -> bool {
                 *self == OE_A::ERROR
+            }
+        }
+        #[doc = "Field `oe` writer - Overrun Error"]
+        pub type OE_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, OE_A, O>;
+        impl<'a, const O: u8> OE_W<'a, O> {
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn error(self) -> &'a mut W {
+                self.variant(OE_A::ERROR)
             }
         }
         #[doc = "Field `pe` reader - Parity Error"]
@@ -2855,6 +2567,15 @@ pub mod uart {
                 *self == PE_A::ERROR
             }
         }
+        #[doc = "Field `pe` writer - Parity Error"]
+        pub type PE_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, PE_A, O>;
+        impl<'a, const O: u8> PE_W<'a, O> {
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn error(self) -> &'a mut W {
+                self.variant(PE_A::ERROR)
+            }
+        }
         #[doc = "Field `fe` reader - Framing Error"]
         pub type FE_R = crate::BitReader<FE_A>;
         #[doc = "Framing Error\n\nValue on reset: 0"]
@@ -2884,8 +2605,19 @@ pub mod uart {
                 *self == FE_A::ERROR
             }
         }
+        #[doc = "Field `fe` writer - Framing Error"]
+        pub type FE_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, FE_A, O>;
+        impl<'a, const O: u8> FE_W<'a, O> {
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn error(self) -> &'a mut W {
+                self.variant(FE_A::ERROR)
+            }
+        }
         #[doc = "Field `bi` reader - Break Interrupt"]
         pub type BI_R = crate::BitReader<bool>;
+        #[doc = "Field `bi` writer - Break Interrupt"]
+        pub type BI_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, bool, O>;
         #[doc = "Field `thre` reader - TX Holding Register Empty"]
         pub type THRE_R = crate::BitReader<THRE_A>;
         #[doc = "TX Holding Register Empty\n\nValue on reset: 0"]
@@ -2913,6 +2645,15 @@ pub mod uart {
             #[inline(always)]
             pub fn is_empty(&self) -> bool {
                 *self == THRE_A::EMPTY
+            }
+        }
+        #[doc = "Field `thre` writer - TX Holding Register Empty"]
+        pub type THRE_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, THRE_A, O>;
+        impl<'a, const O: u8> THRE_W<'a, O> {
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn empty(self) -> &'a mut W {
+                self.variant(THRE_A::EMPTY)
             }
         }
         #[doc = "Field `temt` reader - Transmitter Empty"]
@@ -2944,6 +2685,15 @@ pub mod uart {
                 *self == TEMT_A::EMPTY
             }
         }
+        #[doc = "Field `temt` writer - Transmitter Empty"]
+        pub type TEMT_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, TEMT_A, O>;
+        impl<'a, const O: u8> TEMT_W<'a, O> {
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn empty(self) -> &'a mut W {
+                self.variant(TEMT_A::EMPTY)
+            }
+        }
         #[doc = "Field `fifoerr` reader - RX Data Error in FIFO"]
         pub type FIFOERR_R = crate::BitReader<FIFOERR_A>;
         #[doc = "RX Data Error in FIFO\n\nValue on reset: 0"]
@@ -2971,6 +2721,15 @@ pub mod uart {
             #[inline(always)]
             pub fn is_error(&self) -> bool {
                 *self == FIFOERR_A::ERROR
+            }
+        }
+        #[doc = "Field `fifoerr` writer - RX Data Error in FIFO"]
+        pub type FIFOERR_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, FIFOERR_A, O>;
+        impl<'a, const O: u8> FIFOERR_W<'a, O> {
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn error(self) -> &'a mut W {
+                self.variant(FIFOERR_A::ERROR)
             }
         }
         impl R {
@@ -3015,7 +2774,63 @@ pub mod uart {
                 FIFOERR_R::new(((self.bits >> 7) & 1) != 0)
             }
         }
-        #[doc = "UART Line Status Register\n\nThis register you can [`read`](crate::generic::Reg::read). See [API](https://docs.rs/svd2rust/#read--modify--write-api).\n\nFor information about available fields see [lsr](index.html) module"]
+        impl W {
+            #[doc = "Bit 0 - Data Ready"]
+            #[inline(always)]
+            #[must_use]
+            pub fn dr(&mut self) -> DR_W<0> {
+                DR_W::new(self)
+            }
+            #[doc = "Bit 1 - Overrun Error"]
+            #[inline(always)]
+            #[must_use]
+            pub fn oe(&mut self) -> OE_W<1> {
+                OE_W::new(self)
+            }
+            #[doc = "Bit 2 - Parity Error"]
+            #[inline(always)]
+            #[must_use]
+            pub fn pe(&mut self) -> PE_W<2> {
+                PE_W::new(self)
+            }
+            #[doc = "Bit 3 - Framing Error"]
+            #[inline(always)]
+            #[must_use]
+            pub fn fe(&mut self) -> FE_W<3> {
+                FE_W::new(self)
+            }
+            #[doc = "Bit 4 - Break Interrupt"]
+            #[inline(always)]
+            #[must_use]
+            pub fn bi(&mut self) -> BI_W<4> {
+                BI_W::new(self)
+            }
+            #[doc = "Bit 5 - TX Holding Register Empty"]
+            #[inline(always)]
+            #[must_use]
+            pub fn thre(&mut self) -> THRE_W<5> {
+                THRE_W::new(self)
+            }
+            #[doc = "Bit 6 - Transmitter Empty"]
+            #[inline(always)]
+            #[must_use]
+            pub fn temt(&mut self) -> TEMT_W<6> {
+                TEMT_W::new(self)
+            }
+            #[doc = "Bit 7 - RX Data Error in FIFO"]
+            #[inline(always)]
+            #[must_use]
+            pub fn fifoerr(&mut self) -> FIFOERR_W<7> {
+                FIFOERR_W::new(self)
+            }
+            #[doc = "Writes raw bits to the register."]
+            #[inline(always)]
+            pub unsafe fn bits(&mut self, bits: u32) -> &mut Self {
+                self.0.bits(bits);
+                self
+            }
+        }
+        #[doc = "UART Line Status Register\n\nThis register you can [`read`](crate::generic::Reg::read), [`write_with_zero`](crate::generic::Reg::write_with_zero), [`reset`](crate::generic::Reg::reset), [`write`](crate::generic::Reg::write), [`modify`](crate::generic::Reg::modify). See [API](https://docs.rs/svd2rust/#read--modify--write-api).\n\nFor information about available fields see [lsr](index.html) module"]
         pub struct LSR_SPEC;
         impl crate::RegisterSpec for LSR_SPEC {
             type Ux = u32;
@@ -3024,12 +2839,18 @@ pub mod uart {
         impl crate::Readable for LSR_SPEC {
             type Reader = R;
         }
+        #[doc = "`write(|w| ..)` method takes [lsr::W](W) writer structure"]
+        impl crate::Writable for LSR_SPEC {
+            type Writer = W;
+            const ZERO_TO_MODIFY_FIELDS_BITMAP: Self::Ux = 0;
+            const ONE_TO_MODIFY_FIELDS_BITMAP: Self::Ux = 0;
+        }
         #[doc = "`reset()` method sets lsr to value 0"]
         impl crate::Resettable for LSR_SPEC {
             const RESET_VALUE: Self::Ux = 0;
         }
     }
-    #[doc = "msr (r) register accessor: an alias for `Reg<MSR_SPEC>`"]
+    #[doc = "msr (rw) register accessor: an alias for `Reg<MSR_SPEC>`"]
     pub type MSR = crate::Reg<msr::MSR_SPEC>;
     #[doc = "UART Modem Status Register"]
     pub mod msr {
@@ -3046,6 +2867,27 @@ pub mod uart {
             #[inline(always)]
             fn from(reader: crate::R<MSR_SPEC>) -> Self {
                 R(reader)
+            }
+        }
+        #[doc = "Register `msr` writer"]
+        pub struct W(crate::W<MSR_SPEC>);
+        impl core::ops::Deref for W {
+            type Target = crate::W<MSR_SPEC>;
+            #[inline(always)]
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+        impl core::ops::DerefMut for W {
+            #[inline(always)]
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
+        impl From<crate::W<MSR_SPEC>> for W {
+            #[inline(always)]
+            fn from(writer: crate::W<MSR_SPEC>) -> Self {
+                W(writer)
             }
         }
         #[doc = "Field `dcts` reader - Delta Clear to Send"]
@@ -3084,6 +2926,20 @@ pub mod uart {
                 *self == DCTS_A::CHANGE
             }
         }
+        #[doc = "Field `dcts` writer - Delta Clear to Send"]
+        pub type DCTS_W<'a, const O: u8> = crate::BitWriter<'a, u32, MSR_SPEC, DCTS_A, O>;
+        impl<'a, const O: u8> DCTS_W<'a, O> {
+            #[doc = "`0`"]
+            #[inline(always)]
+            pub fn no_change(self) -> &'a mut W {
+                self.variant(DCTS_A::NO_CHANGE)
+            }
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn change(self) -> &'a mut W {
+                self.variant(DCTS_A::CHANGE)
+            }
+        }
         #[doc = "Field `ddsr` reader - Delta Data Set Ready"]
         pub type DDSR_R = crate::BitReader<DDSR_A>;
         #[doc = "Delta Data Set Ready\n\nValue on reset: 0"]
@@ -3118,6 +2974,20 @@ pub mod uart {
             #[inline(always)]
             pub fn is_change(&self) -> bool {
                 *self == DDSR_A::CHANGE
+            }
+        }
+        #[doc = "Field `ddsr` writer - Delta Data Set Ready"]
+        pub type DDSR_W<'a, const O: u8> = crate::BitWriter<'a, u32, MSR_SPEC, DDSR_A, O>;
+        impl<'a, const O: u8> DDSR_W<'a, O> {
+            #[doc = "`0`"]
+            #[inline(always)]
+            pub fn no_change(self) -> &'a mut W {
+                self.variant(DDSR_A::NO_CHANGE)
+            }
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn change(self) -> &'a mut W {
+                self.variant(DDSR_A::CHANGE)
             }
         }
         #[doc = "Field `teri` reader - Trailing Edge Ring Indicator"]
@@ -3156,6 +3026,20 @@ pub mod uart {
                 *self == TERI_A::CHANGE
             }
         }
+        #[doc = "Field `teri` writer - Trailing Edge Ring Indicator"]
+        pub type TERI_W<'a, const O: u8> = crate::BitWriter<'a, u32, MSR_SPEC, TERI_A, O>;
+        impl<'a, const O: u8> TERI_W<'a, O> {
+            #[doc = "`0`"]
+            #[inline(always)]
+            pub fn no_change(self) -> &'a mut W {
+                self.variant(TERI_A::NO_CHANGE)
+            }
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn change(self) -> &'a mut W {
+                self.variant(TERI_A::CHANGE)
+            }
+        }
         #[doc = "Field `ddcd` reader - Delta Data Carrier Detect"]
         pub type DDCD_R = crate::BitReader<DDCD_A>;
         #[doc = "Delta Data Carrier Detect\n\nValue on reset: 0"]
@@ -3190,6 +3074,20 @@ pub mod uart {
             #[inline(always)]
             pub fn is_change(&self) -> bool {
                 *self == DDCD_A::CHANGE
+            }
+        }
+        #[doc = "Field `ddcd` writer - Delta Data Carrier Detect"]
+        pub type DDCD_W<'a, const O: u8> = crate::BitWriter<'a, u32, MSR_SPEC, DDCD_A, O>;
+        impl<'a, const O: u8> DDCD_W<'a, O> {
+            #[doc = "`0`"]
+            #[inline(always)]
+            pub fn no_change(self) -> &'a mut W {
+                self.variant(DDCD_A::NO_CHANGE)
+            }
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn change(self) -> &'a mut W {
+                self.variant(DDCD_A::CHANGE)
             }
         }
         #[doc = "Field `cts` reader - Line State of Clear To Send"]
@@ -3228,6 +3126,20 @@ pub mod uart {
                 *self == CTS_A::ASSERTED
             }
         }
+        #[doc = "Field `cts` writer - Line State of Clear To Send"]
+        pub type CTS_W<'a, const O: u8> = crate::BitWriter<'a, u32, MSR_SPEC, CTS_A, O>;
+        impl<'a, const O: u8> CTS_W<'a, O> {
+            #[doc = "`0`"]
+            #[inline(always)]
+            pub fn deasserted(self) -> &'a mut W {
+                self.variant(CTS_A::DEASSERTED)
+            }
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn asserted(self) -> &'a mut W {
+                self.variant(CTS_A::ASSERTED)
+            }
+        }
         #[doc = "Field `dsr` reader - Line State of Data Set Ready"]
         pub type DSR_R = crate::BitReader<DSR_A>;
         #[doc = "Line State of Data Set Ready\n\nValue on reset: 0"]
@@ -3262,6 +3174,20 @@ pub mod uart {
             #[inline(always)]
             pub fn is_asserted(&self) -> bool {
                 *self == DSR_A::ASSERTED
+            }
+        }
+        #[doc = "Field `dsr` writer - Line State of Data Set Ready"]
+        pub type DSR_W<'a, const O: u8> = crate::BitWriter<'a, u32, MSR_SPEC, DSR_A, O>;
+        impl<'a, const O: u8> DSR_W<'a, O> {
+            #[doc = "`0`"]
+            #[inline(always)]
+            pub fn deasserted(self) -> &'a mut W {
+                self.variant(DSR_A::DEASSERTED)
+            }
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn asserted(self) -> &'a mut W {
+                self.variant(DSR_A::ASSERTED)
             }
         }
         #[doc = "Field `ri` reader - Line State of Ring Indicator"]
@@ -3300,6 +3226,20 @@ pub mod uart {
                 *self == RI_A::ASSERTED
             }
         }
+        #[doc = "Field `ri` writer - Line State of Ring Indicator"]
+        pub type RI_W<'a, const O: u8> = crate::BitWriter<'a, u32, MSR_SPEC, RI_A, O>;
+        impl<'a, const O: u8> RI_W<'a, O> {
+            #[doc = "`0`"]
+            #[inline(always)]
+            pub fn deasserted(self) -> &'a mut W {
+                self.variant(RI_A::DEASSERTED)
+            }
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn asserted(self) -> &'a mut W {
+                self.variant(RI_A::ASSERTED)
+            }
+        }
         #[doc = "Field `dcd` reader - Line State of Data Carrier Detect"]
         pub type DCD_R = crate::BitReader<DCD_A>;
         #[doc = "Line State of Data Carrier Detect\n\nValue on reset: 0"]
@@ -3334,6 +3274,20 @@ pub mod uart {
             #[inline(always)]
             pub fn is_asserted(&self) -> bool {
                 *self == DCD_A::ASSERTED
+            }
+        }
+        #[doc = "Field `dcd` writer - Line State of Data Carrier Detect"]
+        pub type DCD_W<'a, const O: u8> = crate::BitWriter<'a, u32, MSR_SPEC, DCD_A, O>;
+        impl<'a, const O: u8> DCD_W<'a, O> {
+            #[doc = "`0`"]
+            #[inline(always)]
+            pub fn deasserted(self) -> &'a mut W {
+                self.variant(DCD_A::DEASSERTED)
+            }
+            #[doc = "`1`"]
+            #[inline(always)]
+            pub fn asserted(self) -> &'a mut W {
+                self.variant(DCD_A::ASSERTED)
             }
         }
         impl R {
@@ -3378,7 +3332,63 @@ pub mod uart {
                 DCD_R::new(((self.bits >> 7) & 1) != 0)
             }
         }
-        #[doc = "UART Modem Status Register\n\nThis register you can [`read`](crate::generic::Reg::read). See [API](https://docs.rs/svd2rust/#read--modify--write-api).\n\nFor information about available fields see [msr](index.html) module"]
+        impl W {
+            #[doc = "Bit 0 - Delta Clear to Send"]
+            #[inline(always)]
+            #[must_use]
+            pub fn dcts(&mut self) -> DCTS_W<0> {
+                DCTS_W::new(self)
+            }
+            #[doc = "Bit 1 - Delta Data Set Ready"]
+            #[inline(always)]
+            #[must_use]
+            pub fn ddsr(&mut self) -> DDSR_W<1> {
+                DDSR_W::new(self)
+            }
+            #[doc = "Bit 2 - Trailing Edge Ring Indicator"]
+            #[inline(always)]
+            #[must_use]
+            pub fn teri(&mut self) -> TERI_W<2> {
+                TERI_W::new(self)
+            }
+            #[doc = "Bit 3 - Delta Data Carrier Detect"]
+            #[inline(always)]
+            #[must_use]
+            pub fn ddcd(&mut self) -> DDCD_W<3> {
+                DDCD_W::new(self)
+            }
+            #[doc = "Bit 4 - Line State of Clear To Send"]
+            #[inline(always)]
+            #[must_use]
+            pub fn cts(&mut self) -> CTS_W<4> {
+                CTS_W::new(self)
+            }
+            #[doc = "Bit 5 - Line State of Data Set Ready"]
+            #[inline(always)]
+            #[must_use]
+            pub fn dsr(&mut self) -> DSR_W<5> {
+                DSR_W::new(self)
+            }
+            #[doc = "Bit 6 - Line State of Ring Indicator"]
+            #[inline(always)]
+            #[must_use]
+            pub fn ri(&mut self) -> RI_W<6> {
+                RI_W::new(self)
+            }
+            #[doc = "Bit 7 - Line State of Data Carrier Detect"]
+            #[inline(always)]
+            #[must_use]
+            pub fn dcd(&mut self) -> DCD_W<7> {
+                DCD_W::new(self)
+            }
+            #[doc = "Writes raw bits to the register."]
+            #[inline(always)]
+            pub unsafe fn bits(&mut self, bits: u32) -> &mut Self {
+                self.0.bits(bits);
+                self
+            }
+        }
+        #[doc = "UART Modem Status Register\n\nThis register you can [`read`](crate::generic::Reg::read), [`write_with_zero`](crate::generic::Reg::write_with_zero), [`reset`](crate::generic::Reg::reset), [`write`](crate::generic::Reg::write), [`modify`](crate::generic::Reg::modify). See [API](https://docs.rs/svd2rust/#read--modify--write-api).\n\nFor information about available fields see [msr](index.html) module"]
         pub struct MSR_SPEC;
         impl crate::RegisterSpec for MSR_SPEC {
             type Ux = u32;
@@ -3386,6 +3396,12 @@ pub mod uart {
         #[doc = "`read()` method returns [msr::R](R) reader structure"]
         impl crate::Readable for MSR_SPEC {
             type Reader = R;
+        }
+        #[doc = "`write(|w| ..)` method takes [msr::W](W) writer structure"]
+        impl crate::Writable for MSR_SPEC {
+            type Writer = W;
+            const ZERO_TO_MODIFY_FIELDS_BITMAP: Self::Ux = 0;
+            const ONE_TO_MODIFY_FIELDS_BITMAP: Self::Ux = 0;
         }
         #[doc = "`reset()` method sets msr to value 0"]
         impl crate::Resettable for MSR_SPEC {

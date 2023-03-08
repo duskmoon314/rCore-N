@@ -13,6 +13,27 @@ impl From<crate::R<LSR_SPEC>> for R {
         R(reader)
     }
 }
+#[doc = "Register `lsr` writer"]
+pub struct W(crate::W<LSR_SPEC>);
+impl core::ops::Deref for W {
+    type Target = crate::W<LSR_SPEC>;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl core::ops::DerefMut for W {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+impl From<crate::W<LSR_SPEC>> for W {
+    #[inline(always)]
+    fn from(writer: crate::W<LSR_SPEC>) -> Self {
+        W(writer)
+    }
+}
 #[doc = "Field `dr` reader - Data Ready"]
 pub type DR_R = crate::BitReader<DR_A>;
 #[doc = "Data Ready\n\nValue on reset: 0"]
@@ -40,6 +61,15 @@ impl DR_R {
     #[inline(always)]
     pub fn is_ready(&self) -> bool {
         *self == DR_A::READY
+    }
+}
+#[doc = "Field `dr` writer - Data Ready"]
+pub type DR_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, DR_A, O>;
+impl<'a, const O: u8> DR_W<'a, O> {
+    #[doc = "`1`"]
+    #[inline(always)]
+    pub fn ready(self) -> &'a mut W {
+        self.variant(DR_A::READY)
     }
 }
 #[doc = "Field `oe` reader - Overrun Error"]
@@ -71,6 +101,15 @@ impl OE_R {
         *self == OE_A::ERROR
     }
 }
+#[doc = "Field `oe` writer - Overrun Error"]
+pub type OE_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, OE_A, O>;
+impl<'a, const O: u8> OE_W<'a, O> {
+    #[doc = "`1`"]
+    #[inline(always)]
+    pub fn error(self) -> &'a mut W {
+        self.variant(OE_A::ERROR)
+    }
+}
 #[doc = "Field `pe` reader - Parity Error"]
 pub type PE_R = crate::BitReader<PE_A>;
 #[doc = "Parity Error\n\nValue on reset: 0"]
@@ -98,6 +137,15 @@ impl PE_R {
     #[inline(always)]
     pub fn is_error(&self) -> bool {
         *self == PE_A::ERROR
+    }
+}
+#[doc = "Field `pe` writer - Parity Error"]
+pub type PE_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, PE_A, O>;
+impl<'a, const O: u8> PE_W<'a, O> {
+    #[doc = "`1`"]
+    #[inline(always)]
+    pub fn error(self) -> &'a mut W {
+        self.variant(PE_A::ERROR)
     }
 }
 #[doc = "Field `fe` reader - Framing Error"]
@@ -129,8 +177,19 @@ impl FE_R {
         *self == FE_A::ERROR
     }
 }
+#[doc = "Field `fe` writer - Framing Error"]
+pub type FE_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, FE_A, O>;
+impl<'a, const O: u8> FE_W<'a, O> {
+    #[doc = "`1`"]
+    #[inline(always)]
+    pub fn error(self) -> &'a mut W {
+        self.variant(FE_A::ERROR)
+    }
+}
 #[doc = "Field `bi` reader - Break Interrupt"]
 pub type BI_R = crate::BitReader<bool>;
+#[doc = "Field `bi` writer - Break Interrupt"]
+pub type BI_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, bool, O>;
 #[doc = "Field `thre` reader - TX Holding Register Empty"]
 pub type THRE_R = crate::BitReader<THRE_A>;
 #[doc = "TX Holding Register Empty\n\nValue on reset: 0"]
@@ -158,6 +217,15 @@ impl THRE_R {
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         *self == THRE_A::EMPTY
+    }
+}
+#[doc = "Field `thre` writer - TX Holding Register Empty"]
+pub type THRE_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, THRE_A, O>;
+impl<'a, const O: u8> THRE_W<'a, O> {
+    #[doc = "`1`"]
+    #[inline(always)]
+    pub fn empty(self) -> &'a mut W {
+        self.variant(THRE_A::EMPTY)
     }
 }
 #[doc = "Field `temt` reader - Transmitter Empty"]
@@ -189,6 +257,15 @@ impl TEMT_R {
         *self == TEMT_A::EMPTY
     }
 }
+#[doc = "Field `temt` writer - Transmitter Empty"]
+pub type TEMT_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, TEMT_A, O>;
+impl<'a, const O: u8> TEMT_W<'a, O> {
+    #[doc = "`1`"]
+    #[inline(always)]
+    pub fn empty(self) -> &'a mut W {
+        self.variant(TEMT_A::EMPTY)
+    }
+}
 #[doc = "Field `fifoerr` reader - RX Data Error in FIFO"]
 pub type FIFOERR_R = crate::BitReader<FIFOERR_A>;
 #[doc = "RX Data Error in FIFO\n\nValue on reset: 0"]
@@ -216,6 +293,15 @@ impl FIFOERR_R {
     #[inline(always)]
     pub fn is_error(&self) -> bool {
         *self == FIFOERR_A::ERROR
+    }
+}
+#[doc = "Field `fifoerr` writer - RX Data Error in FIFO"]
+pub type FIFOERR_W<'a, const O: u8> = crate::BitWriter<'a, u32, LSR_SPEC, FIFOERR_A, O>;
+impl<'a, const O: u8> FIFOERR_W<'a, O> {
+    #[doc = "`1`"]
+    #[inline(always)]
+    pub fn error(self) -> &'a mut W {
+        self.variant(FIFOERR_A::ERROR)
     }
 }
 impl R {
@@ -260,7 +346,63 @@ impl R {
         FIFOERR_R::new(((self.bits >> 7) & 1) != 0)
     }
 }
-#[doc = "UART Line Status Register\n\nThis register you can [`read`](crate::generic::Reg::read). See [API](https://docs.rs/svd2rust/#read--modify--write-api).\n\nFor information about available fields see [lsr](index.html) module"]
+impl W {
+    #[doc = "Bit 0 - Data Ready"]
+    #[inline(always)]
+    #[must_use]
+    pub fn dr(&mut self) -> DR_W<0> {
+        DR_W::new(self)
+    }
+    #[doc = "Bit 1 - Overrun Error"]
+    #[inline(always)]
+    #[must_use]
+    pub fn oe(&mut self) -> OE_W<1> {
+        OE_W::new(self)
+    }
+    #[doc = "Bit 2 - Parity Error"]
+    #[inline(always)]
+    #[must_use]
+    pub fn pe(&mut self) -> PE_W<2> {
+        PE_W::new(self)
+    }
+    #[doc = "Bit 3 - Framing Error"]
+    #[inline(always)]
+    #[must_use]
+    pub fn fe(&mut self) -> FE_W<3> {
+        FE_W::new(self)
+    }
+    #[doc = "Bit 4 - Break Interrupt"]
+    #[inline(always)]
+    #[must_use]
+    pub fn bi(&mut self) -> BI_W<4> {
+        BI_W::new(self)
+    }
+    #[doc = "Bit 5 - TX Holding Register Empty"]
+    #[inline(always)]
+    #[must_use]
+    pub fn thre(&mut self) -> THRE_W<5> {
+        THRE_W::new(self)
+    }
+    #[doc = "Bit 6 - Transmitter Empty"]
+    #[inline(always)]
+    #[must_use]
+    pub fn temt(&mut self) -> TEMT_W<6> {
+        TEMT_W::new(self)
+    }
+    #[doc = "Bit 7 - RX Data Error in FIFO"]
+    #[inline(always)]
+    #[must_use]
+    pub fn fifoerr(&mut self) -> FIFOERR_W<7> {
+        FIFOERR_W::new(self)
+    }
+    #[doc = "Writes raw bits to the register."]
+    #[inline(always)]
+    pub unsafe fn bits(&mut self, bits: u32) -> &mut Self {
+        self.0.bits(bits);
+        self
+    }
+}
+#[doc = "UART Line Status Register\n\nThis register you can [`read`](crate::generic::Reg::read), [`write_with_zero`](crate::generic::Reg::write_with_zero), [`reset`](crate::generic::Reg::reset), [`write`](crate::generic::Reg::write), [`modify`](crate::generic::Reg::modify). See [API](https://docs.rs/svd2rust/#read--modify--write-api).\n\nFor information about available fields see [lsr](index.html) module"]
 pub struct LSR_SPEC;
 impl crate::RegisterSpec for LSR_SPEC {
     type Ux = u32;
@@ -268,6 +410,12 @@ impl crate::RegisterSpec for LSR_SPEC {
 #[doc = "`read()` method returns [lsr::R](R) reader structure"]
 impl crate::Readable for LSR_SPEC {
     type Reader = R;
+}
+#[doc = "`write(|w| ..)` method takes [lsr::W](W) writer structure"]
+impl crate::Writable for LSR_SPEC {
+    type Writer = W;
+    const ZERO_TO_MODIFY_FIELDS_BITMAP: Self::Ux = 0;
+    const ONE_TO_MODIFY_FIELDS_BITMAP: Self::Ux = 0;
 }
 #[doc = "`reset()` method sets lsr to value 0"]
 impl crate::Resettable for LSR_SPEC {

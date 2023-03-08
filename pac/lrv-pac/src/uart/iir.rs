@@ -25,14 +25,10 @@ pub enum IID_A {
     NO_INTERRUPT_PENDING = 1,
     #[doc = "2: `10`"]
     THR_EMPTY = 2,
-    #[doc = "3: `11`"]
-    RS485_INTERRUPT = 3,
     #[doc = "4: `100`"]
     RECEIVED_DATA_AVAILABLE = 4,
     #[doc = "6: `110`"]
     RECEIVER_LINE_STATUS = 6,
-    #[doc = "7: `111`"]
-    BUSY_DETECT = 7,
     #[doc = "12: `1100`"]
     CHARACTER_TIMEOUT = 12,
 }
@@ -50,10 +46,8 @@ impl IID_R {
             0 => Some(IID_A::MODEM_STATUS),
             1 => Some(IID_A::NO_INTERRUPT_PENDING),
             2 => Some(IID_A::THR_EMPTY),
-            3 => Some(IID_A::RS485_INTERRUPT),
             4 => Some(IID_A::RECEIVED_DATA_AVAILABLE),
             6 => Some(IID_A::RECEIVER_LINE_STATUS),
-            7 => Some(IID_A::BUSY_DETECT),
             12 => Some(IID_A::CHARACTER_TIMEOUT),
             _ => None,
         }
@@ -73,11 +67,6 @@ impl IID_R {
     pub fn is_thr_empty(&self) -> bool {
         *self == IID_A::THR_EMPTY
     }
-    #[doc = "Checks if the value of the field is `RS485_INTERRUPT`"]
-    #[inline(always)]
-    pub fn is_rs485_interrupt(&self) -> bool {
-        *self == IID_A::RS485_INTERRUPT
-    }
     #[doc = "Checks if the value of the field is `RECEIVED_DATA_AVAILABLE`"]
     #[inline(always)]
     pub fn is_received_data_available(&self) -> bool {
@@ -87,11 +76,6 @@ impl IID_R {
     #[inline(always)]
     pub fn is_receiver_line_status(&self) -> bool {
         *self == IID_A::RECEIVER_LINE_STATUS
-    }
-    #[doc = "Checks if the value of the field is `BUSY_DETECT`"]
-    #[inline(always)]
-    pub fn is_busy_detect(&self) -> bool {
-        *self == IID_A::BUSY_DETECT
     }
     #[doc = "Checks if the value of the field is `CHARACTER_TIMEOUT`"]
     #[inline(always)]

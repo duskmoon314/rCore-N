@@ -234,106 +234,6 @@ impl<'a, const O: u8> EDSSI_W<'a, O> {
         self.variant(EDSSI_A::ENABLE)
     }
 }
-#[doc = "Field `rs485_int_en` reader - RS485 Interrupt Enable"]
-pub type RS485_INT_EN_R = crate::BitReader<RS485_INT_EN_A>;
-#[doc = "RS485 Interrupt Enable\n\nValue on reset: 0"]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RS485_INT_EN_A {
-    #[doc = "0: `0`"]
-    DISABLE = 0,
-    #[doc = "1: `1`"]
-    ENABLE = 1,
-}
-impl From<RS485_INT_EN_A> for bool {
-    #[inline(always)]
-    fn from(variant: RS485_INT_EN_A) -> Self {
-        variant as u8 != 0
-    }
-}
-impl RS485_INT_EN_R {
-    #[doc = "Get enumerated values variant"]
-    #[inline(always)]
-    pub fn variant(&self) -> RS485_INT_EN_A {
-        match self.bits {
-            false => RS485_INT_EN_A::DISABLE,
-            true => RS485_INT_EN_A::ENABLE,
-        }
-    }
-    #[doc = "Checks if the value of the field is `DISABLE`"]
-    #[inline(always)]
-    pub fn is_disable(&self) -> bool {
-        *self == RS485_INT_EN_A::DISABLE
-    }
-    #[doc = "Checks if the value of the field is `ENABLE`"]
-    #[inline(always)]
-    pub fn is_enable(&self) -> bool {
-        *self == RS485_INT_EN_A::ENABLE
-    }
-}
-#[doc = "Field `rs485_int_en` writer - RS485 Interrupt Enable"]
-pub type RS485_INT_EN_W<'a, const O: u8> = crate::BitWriter<'a, u32, IER_SPEC, RS485_INT_EN_A, O>;
-impl<'a, const O: u8> RS485_INT_EN_W<'a, O> {
-    #[doc = "`0`"]
-    #[inline(always)]
-    pub fn disable(self) -> &'a mut W {
-        self.variant(RS485_INT_EN_A::DISABLE)
-    }
-    #[doc = "`1`"]
-    #[inline(always)]
-    pub fn enable(self) -> &'a mut W {
-        self.variant(RS485_INT_EN_A::ENABLE)
-    }
-}
-#[doc = "Field `ptime` reader - Programmable THRE Interrupt Mode Enable"]
-pub type PTIME_R = crate::BitReader<PTIME_A>;
-#[doc = "Programmable THRE Interrupt Mode Enable\n\nValue on reset: 0"]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PTIME_A {
-    #[doc = "0: `0`"]
-    DISABLE = 0,
-    #[doc = "1: `1`"]
-    ENABLE = 1,
-}
-impl From<PTIME_A> for bool {
-    #[inline(always)]
-    fn from(variant: PTIME_A) -> Self {
-        variant as u8 != 0
-    }
-}
-impl PTIME_R {
-    #[doc = "Get enumerated values variant"]
-    #[inline(always)]
-    pub fn variant(&self) -> PTIME_A {
-        match self.bits {
-            false => PTIME_A::DISABLE,
-            true => PTIME_A::ENABLE,
-        }
-    }
-    #[doc = "Checks if the value of the field is `DISABLE`"]
-    #[inline(always)]
-    pub fn is_disable(&self) -> bool {
-        *self == PTIME_A::DISABLE
-    }
-    #[doc = "Checks if the value of the field is `ENABLE`"]
-    #[inline(always)]
-    pub fn is_enable(&self) -> bool {
-        *self == PTIME_A::ENABLE
-    }
-}
-#[doc = "Field `ptime` writer - Programmable THRE Interrupt Mode Enable"]
-pub type PTIME_W<'a, const O: u8> = crate::BitWriter<'a, u32, IER_SPEC, PTIME_A, O>;
-impl<'a, const O: u8> PTIME_W<'a, O> {
-    #[doc = "`0`"]
-    #[inline(always)]
-    pub fn disable(self) -> &'a mut W {
-        self.variant(PTIME_A::DISABLE)
-    }
-    #[doc = "`1`"]
-    #[inline(always)]
-    pub fn enable(self) -> &'a mut W {
-        self.variant(PTIME_A::ENABLE)
-    }
-}
 impl R {
     #[doc = "Bit 0 - Enable Received Data Available Interrupt"]
     #[inline(always)]
@@ -354,16 +254,6 @@ impl R {
     #[inline(always)]
     pub fn edssi(&self) -> EDSSI_R {
         EDSSI_R::new(((self.bits >> 3) & 1) != 0)
-    }
-    #[doc = "Bit 4 - RS485 Interrupt Enable"]
-    #[inline(always)]
-    pub fn rs485_int_en(&self) -> RS485_INT_EN_R {
-        RS485_INT_EN_R::new(((self.bits >> 4) & 1) != 0)
-    }
-    #[doc = "Bit 7 - Programmable THRE Interrupt Mode Enable"]
-    #[inline(always)]
-    pub fn ptime(&self) -> PTIME_R {
-        PTIME_R::new(((self.bits >> 7) & 1) != 0)
     }
 }
 impl W {
@@ -390,18 +280,6 @@ impl W {
     #[must_use]
     pub fn edssi(&mut self) -> EDSSI_W<3> {
         EDSSI_W::new(self)
-    }
-    #[doc = "Bit 4 - RS485 Interrupt Enable"]
-    #[inline(always)]
-    #[must_use]
-    pub fn rs485_int_en(&mut self) -> RS485_INT_EN_W<4> {
-        RS485_INT_EN_W::new(self)
-    }
-    #[doc = "Bit 7 - Programmable THRE Interrupt Mode Enable"]
-    #[inline(always)]
-    #[must_use]
-    pub fn ptime(&mut self) -> PTIME_W<7> {
-        PTIME_W::new(self)
     }
     #[doc = "Writes raw bits to the register."]
     #[inline(always)]

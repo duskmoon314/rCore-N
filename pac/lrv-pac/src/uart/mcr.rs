@@ -184,121 +184,6 @@ impl<'a, const O: u8> LOOP_W<'a, O> {
         self.variant(LOOP_A::LOOP_BACK)
     }
 }
-#[doc = "Field `afce` reader - Auto Flow Control Enable"]
-pub type AFCE_R = crate::BitReader<AFCE_A>;
-#[doc = "Auto Flow Control Enable\n\nValue on reset: 0"]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AFCE_A {
-    #[doc = "0: `0`"]
-    DISABLED = 0,
-    #[doc = "1: `1`"]
-    ENABLED = 1,
-}
-impl From<AFCE_A> for bool {
-    #[inline(always)]
-    fn from(variant: AFCE_A) -> Self {
-        variant as u8 != 0
-    }
-}
-impl AFCE_R {
-    #[doc = "Get enumerated values variant"]
-    #[inline(always)]
-    pub fn variant(&self) -> AFCE_A {
-        match self.bits {
-            false => AFCE_A::DISABLED,
-            true => AFCE_A::ENABLED,
-        }
-    }
-    #[doc = "Checks if the value of the field is `DISABLED`"]
-    #[inline(always)]
-    pub fn is_disabled(&self) -> bool {
-        *self == AFCE_A::DISABLED
-    }
-    #[doc = "Checks if the value of the field is `ENABLED`"]
-    #[inline(always)]
-    pub fn is_enabled(&self) -> bool {
-        *self == AFCE_A::ENABLED
-    }
-}
-#[doc = "Field `afce` writer - Auto Flow Control Enable"]
-pub type AFCE_W<'a, const O: u8> = crate::BitWriter<'a, u32, MCR_SPEC, AFCE_A, O>;
-impl<'a, const O: u8> AFCE_W<'a, O> {
-    #[doc = "`0`"]
-    #[inline(always)]
-    pub fn disabled(self) -> &'a mut W {
-        self.variant(AFCE_A::DISABLED)
-    }
-    #[doc = "`1`"]
-    #[inline(always)]
-    pub fn enabled(self) -> &'a mut W {
-        self.variant(AFCE_A::ENABLED)
-    }
-}
-#[doc = "Field `function` reader - UART Function: Select IrDA or RS485"]
-pub type FUNCTION_R = crate::FieldReader<u8, FUNCTION_A>;
-#[doc = "UART Function: Select IrDA or RS485\n\nValue on reset: 0"]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum FUNCTION_A {
-    #[doc = "0: `0`"]
-    UART = 0,
-    #[doc = "1: `1`"]
-    IR_DA_SIR = 1,
-    #[doc = "2: `10`"]
-    RS485 = 2,
-}
-impl From<FUNCTION_A> for u8 {
-    #[inline(always)]
-    fn from(variant: FUNCTION_A) -> Self {
-        variant as _
-    }
-}
-impl FUNCTION_R {
-    #[doc = "Get enumerated values variant"]
-    #[inline(always)]
-    pub fn variant(&self) -> FUNCTION_A {
-        match self.bits {
-            0 => FUNCTION_A::UART,
-            1 => FUNCTION_A::IR_DA_SIR,
-            2 => FUNCTION_A::RS485,
-            _ => unreachable!(),
-        }
-    }
-    #[doc = "Checks if the value of the field is `UART`"]
-    #[inline(always)]
-    pub fn is_uart(&self) -> bool {
-        *self == FUNCTION_A::UART
-    }
-    #[doc = "Checks if the value of the field is `IR_DA_SIR`"]
-    #[inline(always)]
-    pub fn is_ir_da_sir(&self) -> bool {
-        *self == FUNCTION_A::IR_DA_SIR
-    }
-    #[doc = "Checks if the value of the field is `RS485`"]
-    #[inline(always)]
-    pub fn is_rs485(&self) -> bool {
-        *self == FUNCTION_A::RS485
-    }
-}
-#[doc = "Field `function` writer - UART Function: Select IrDA or RS485"]
-pub type FUNCTION_W<'a, const O: u8> = crate::FieldWriter<'a, u32, MCR_SPEC, u8, FUNCTION_A, 2, O>;
-impl<'a, const O: u8> FUNCTION_W<'a, O> {
-    #[doc = "`0`"]
-    #[inline(always)]
-    pub fn uart(self) -> &'a mut W {
-        self.variant(FUNCTION_A::UART)
-    }
-    #[doc = "`1`"]
-    #[inline(always)]
-    pub fn ir_da_sir(self) -> &'a mut W {
-        self.variant(FUNCTION_A::IR_DA_SIR)
-    }
-    #[doc = "`10`"]
-    #[inline(always)]
-    pub fn rs485(self) -> &'a mut W {
-        self.variant(FUNCTION_A::RS485)
-    }
-}
 impl R {
     #[doc = "Bit 0 - Data Terminal Ready"]
     #[inline(always)]
@@ -314,16 +199,6 @@ impl R {
     #[inline(always)]
     pub fn loop_(&self) -> LOOP_R {
         LOOP_R::new(((self.bits >> 4) & 1) != 0)
-    }
-    #[doc = "Bit 5 - Auto Flow Control Enable"]
-    #[inline(always)]
-    pub fn afce(&self) -> AFCE_R {
-        AFCE_R::new(((self.bits >> 5) & 1) != 0)
-    }
-    #[doc = "Bits 6:7 - UART Function: Select IrDA or RS485"]
-    #[inline(always)]
-    pub fn function(&self) -> FUNCTION_R {
-        FUNCTION_R::new(((self.bits >> 6) & 3) as u8)
     }
 }
 impl W {
@@ -344,18 +219,6 @@ impl W {
     #[must_use]
     pub fn loop_(&mut self) -> LOOP_W<4> {
         LOOP_W::new(self)
-    }
-    #[doc = "Bit 5 - Auto Flow Control Enable"]
-    #[inline(always)]
-    #[must_use]
-    pub fn afce(&mut self) -> AFCE_W<5> {
-        AFCE_W::new(self)
-    }
-    #[doc = "Bits 6:7 - UART Function: Select IrDA or RS485"]
-    #[inline(always)]
-    #[must_use]
-    pub fn function(&mut self) -> FUNCTION_W<6> {
-        FUNCTION_W::new(self)
     }
     #[doc = "Writes raw bits to the register."]
     #[inline(always)]

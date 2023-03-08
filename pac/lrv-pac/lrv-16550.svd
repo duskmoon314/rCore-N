@@ -12,8 +12,6 @@
   <resetMask>0xFFFFFFFF</resetMask>
 
   <peripherals>
-
-
     <peripheral>
       <dim>4</dim>
       <dimIncrement>0x1000</dimIncrement>
@@ -78,36 +76,6 @@
           <description>UART Interrupt Enable Register</description>
           <addressOffset>0x4</addressOffset>
           <fields>
-            <field>
-              <name>ptime</name>
-              <description>Programmable THRE Interrupt Mode Enable</description>
-              <bitRange>[7:7]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>DISABLE</name>
-                  <value>0x0</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>ENABLE</name>
-                  <value>0x1</value>
-                </enumeratedValue>
-              </enumeratedValues>
-            </field>
-            <field>
-              <name>rs485_int_en</name>
-              <description>RS485 Interrupt Enable</description>
-              <bitRange>[4:4]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>DISABLE</name>
-                  <value>0x0</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>ENABLE</name>
-                  <value>0x1</value>
-                </enumeratedValue>
-              </enumeratedValues>
-            </field>
             <field>
               <name>edssi</name>
               <description>Enable Modem Status Interrupt</description>
@@ -209,20 +177,12 @@
                   <value>0x2</value>
                 </enumeratedValue>
                 <enumeratedValue>
-                  <name>RS485_INTERRUPT</name>
-                  <value>0x3</value>
-                </enumeratedValue>
-                <enumeratedValue>
                   <name>RECEIVED_DATA_AVAILABLE</name>
                   <value>0x4</value>
                 </enumeratedValue>
                 <enumeratedValue>
                   <name>RECEIVER_LINE_STATUS</name>
                   <value>0x6</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>BUSY_DETECT</name>
-                  <value>0x7</value>
                 </enumeratedValue>
                 <enumeratedValue>
                   <name>CHARACTER_TIMEOUT</name>
@@ -256,28 +216,6 @@
                 </enumeratedValue>
                 <enumeratedValue>
                   <name>TWO_LESS_THAN_FULL</name>
-                  <value>0x3</value>
-                </enumeratedValue>
-              </enumeratedValues>
-            </field>
-            <field>
-              <name>tft</name>
-              <bitRange>[5:4]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>EMPTY</name>
-                  <value>0x0</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>TWO_CHARACTERS</name>
-                  <value>0x1</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>QUARTER_FULL</name>
-                  <value>0x2</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>HALF_FULL</name>
                   <value>0x3</value>
                 </enumeratedValue>
               </enumeratedValues>
@@ -425,44 +363,6 @@
           <addressOffset>0x10</addressOffset>
           <fields>
             <field>
-              <name>function</name>
-              <description>UART Function: Select IrDA or RS485</description>
-              <bitRange>[7:6]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>UART</name>
-                  <value>0x0</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>IR_DA_SIR</name>
-                  <value>0x1</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>RS485</name>
-                  <value>0x2</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>RESERVED</name>
-                  <value>0x3</value>
-                </enumeratedValue>
-              </enumeratedValues>
-            </field>
-            <field>
-              <name>afce</name>
-              <description>Auto Flow Control Enable</description>
-              <bitRange>[5:5]</bitRange>
-              <enumeratedValues>
-                <enumeratedValue>
-                  <name>DISABLED</name>
-                  <value>0x0</value>
-                </enumeratedValue>
-                <enumeratedValue>
-                  <name>ENABLED</name>
-                  <value>0x1</value>
-                </enumeratedValue>
-              </enumeratedValues>
-            </field>
-            <field>
               <name>loop</name>
               <description>Loop Back Mode</description>
               <bitRange>[4:4]</bitRange>
@@ -513,7 +413,6 @@
           <name>lsr</name>
           <description>UART Line Status Register</description>
           <addressOffset>0x14</addressOffset>
-          <access>read-only</access>
           <fields>
             <field>
               <name>fifoerr</name>
@@ -603,7 +502,6 @@
           <name>msr</name>
           <description>UART Modem Status Register</description>
           <addressOffset>0x18</addressOffset>
-          <access>read-only</access>
           <fields>
             <field>
               <name>dcd</name>
@@ -740,6 +638,5 @@
         </register>
       </registers>
     </peripheral>
-
   </peripherals>
 </device>

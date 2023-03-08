@@ -88,11 +88,11 @@ pub mod lcr;
 pub type MCR = crate::Reg<mcr::MCR_SPEC>;
 #[doc = "UART Modem Control Register"]
 pub mod mcr;
-#[doc = "lsr (r) register accessor: an alias for `Reg<LSR_SPEC>`"]
+#[doc = "lsr (rw) register accessor: an alias for `Reg<LSR_SPEC>`"]
 pub type LSR = crate::Reg<lsr::LSR_SPEC>;
 #[doc = "UART Line Status Register"]
 pub mod lsr;
-#[doc = "msr (r) register accessor: an alias for `Reg<MSR_SPEC>`"]
+#[doc = "msr (rw) register accessor: an alias for `Reg<MSR_SPEC>`"]
 pub type MSR = crate::Reg<msr::MSR_SPEC>;
 #[doc = "UART Modem Status Register"]
 pub mod msr;
