@@ -72,6 +72,7 @@ pub struct BufferedSerial {
     pub intr_count: usize,
     pub rx_intr_count: usize,
     pub tx_intr_count: usize,
+    pub rx_fifo_count: usize,
     pub tx_fifo_count: usize,
     rx_intr_enabled: bool,
     tx_intr_enabled: bool,
@@ -89,6 +90,7 @@ impl BufferedSerial {
             intr_count: 0,
             rx_intr_count: 0,
             tx_intr_count: 0,
+            rx_fifo_count: 0,
             tx_fifo_count: 0,
             rx_intr_enabled: false,
             tx_intr_enabled: false,
@@ -150,227 +152,9 @@ impl BufferedSerial {
     fn try_recv(&self) -> Option<u8> {
         let block = self.hardware();
         if block.lsr.read().dr().bit_is_set() {
-            Some(block.rbr().read().bits() as _)
+            Some(block.rbr().read().rbr().bits())
         } else {
-            None
-        }
-    }
-
-    fn send(&self, ch: u8) {
-        let block = self.hardware();
-        block.thr().write(|w| w.thr().variant(ch));
-    }
-
-    pub fn hardware_init(&mut self, baud_rate: usize) {
-        let block = self.hardware();
-        let _unused = block.msr.read().bits();
-        let _unused = block.lsr.read().bits();
-        block.lcr.reset();
-        // No modem control
-        block.mcr.reset();
-        block.ier().reset();
-        block.fcr().reset();
-
-        // Enable DLAB and Set divisor
-        self.set_divisor(100_000_000, baud_rate);
-        // Disable DLAB and set word length 8 bits, no parity, 1 stop bit
-        block
-            .lcr
-            .modify(|_, w| w.dls().eight().pen().disabled().stop().one());
-        // Enable FIFO
-        block.fcr().write(|w| {
-            w.fifoe()
-                .clear_bit()
-                .rfifor()
-                .set_bit()
-                .xfifor()
-                .set_bit()
-                .rt()
-                .one_character()
-        });
-
-        // Enable received_data_available_interrupt
-        self.enable_rdai();
-    }
-
-    #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
-    pub fn interrupt_handler(&mut self) {
-        // println!("[SERIAL] Interrupt!");
-
-        use uart::iir::IID_A;
-
-        use crate::trace::push_trace;
-        while let Some(int_type) = self.hardware().iir().read().iid().variant() {
-            if int_type == IID_A::NO_INTERRUPT_PENDING {
-                break;
-            }
-            let intr_id: usize = int_type as u8 as _;
-            push_trace(SERIAL_INTR_ENTER + intr_id);
-            self.intr_count += 1;
-            match int_type {
-                IID_A::RECEIVED_DATA_AVAILABLE | IID_A::CHARACTER_TIMEOUT => {
-                    // println!("[SERIAL] Received data available");
-                    self.rx_intr_count += 1;
-                    while let Some(ch) = self.try_recv() {
-                        if self.rx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
-                            self.rx_buffer.push_back(ch);
-                            self.rx_count += 1;
-                        } else {
-                            // println!("[USER UART] Serial rx buffer overflow!");
-                            self.disable_rdai();
-                            break;
-                        }
-                    }
-                }
-                IID_A::THR_EMPTY => {
-                    // println!("[SERIAL] Transmitter Holding Register Empty");
-                    self.tx_intr_count += 1;
-                    for _ in 0..FIFO_DEPTH {
-                        if let Some(ch) = self.tx_buffer.pop_front() {
-                            self.send(ch);
-                            self.tx_count += 1;
-                        } else {
-                            self.disable_threi();
-                            break;
-                        }
-                    }
-                }
-                IID_A::MODEM_STATUS => {
-                    let block = self.hardware();
-                    println!(
-                        "[USER SERIAL] MSR: {:#x}, LSR: {:#x}, IER: {:#x}",
-                        block.msr.read().bits(),
-                        block.lsr.read().bits(),
-                        block.ier().read().bits()
-                    );
-                }
-                _ => {
-                    println!("[USER SERIAL] {:?} not supported!", int_type);
-                }
-            }
-            push_trace(SERIAL_INTR_EXIT + intr_id);
-        }
-    }
-}
-
-impl Write<u8> for BufferedSerial {
-    type Error = Infallible;
-
-    // #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
-    // fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
-    //     let serial = &mut self.hardware;
-    //     if self.tx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
-    //         self.tx_buffer.push_back(word);
-    //         if !self.tx_intr_enabled {
-    //             serial.enable_transmitter_holding_register_empty_interrupt();
-    //             self.tx_intr_enabled = true;
-    //         }
-    //     } else {
-    //         // println!("[USER SERIAL] Tx buffer overflow!");
-    //         return Err(nb::Error::WouldBlock);
-    //     }
-    //     Ok(())
-    // }
-
-    #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
-    fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
-        if self.tx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
-            self.tx_buffer.push_back(word);
-            if !self.tx_intr_enabled {
-                self.enable_threi();
-            }
-        } else {
-            // println!("[USER SERIAL] Tx buffer overflow!");
-            return Err(nb::Error::WouldBlock);
-        }
-        Ok(())
-    }
-
-    fn try_flush(&mut self) -> nb::Result<(), Self::Error> {
-        todo!()
-    }
-}
-
-impl Read<u8> for BufferedSerial {
-    type Error = Infallible;
-
-    fn try_read(&mut self) -> nb::Result<u8, Self::Error> {
-        if let Some(ch) = self.rx_buffer.pop_front() {
-            Ok(ch)
-        } else {
-            if !self.rx_intr_enabled {
-                self.enable_rdai();
-            }
-            Err(nb::Error::WouldBlock)
-        }
-    }
-}
-
-impl Drop for BufferedSerial {
-    fn drop(&mut self) {
-        let block = self.hardware();
-        block.ier().reset();
-        let _unused = block.msr.read().bits();
-        let _unused = block.lsr.read().bits();
-        // reset Rx & Tx FIFO, disable FIFO
-        block
-            .fcr()
-            .write(|w| w.fifoe().clear_bit().rfifor().set_bit().xfifor().set_bit());
-    }
-}
-
-pub struct PollingSerial {
-    base_address: usize,
-    pub rx_count: usize,
-    pub tx_count: usize,
-    pub tx_fifo_count: usize,
-}
-
-impl PollingSerial {
-    pub fn new(base_address: usize) -> Self {
-        PollingSerial {
-            base_address,
-            rx_count: 0,
-            tx_count: 0,
-            tx_fifo_count: 0,
-        }
-    }
-
-    fn hardware(&self) -> &uart::RegisterBlock {
-        unsafe { &*(self.base_address as *const _) }
-    }
-
-    fn set_divisor(&self, clock: usize, baud_rate: usize) {
-        let block = self.hardware();
-        let divisor = clock / (16 * baud_rate);
-        block.lcr.write(|w| w.dlab().set_bit());
-        #[cfg(feature = "board_lrv")]
-        {
-            block
-                .dll()
-                .write(|w| unsafe { w.bits((divisor & 0b1111_1111) as u32) });
-            block
-                .dlh()
-                .write(|w| unsafe { w.bits(((divisor >> 8) & 0b1111_1111) as u32) });
-        }
-        #[cfg(feature = "board_qemu")]
-        {
-            block
-                .dll()
-                .write(|w| unsafe { w.bits((divisor & 0b1111_1111) as u8) });
-            block
-                .dlh()
-                .write(|w| unsafe { w.bits(((divisor >> 8) & 0b1111_1111) as u8) });
-        }
-
-        block.lcr.write(|w| w.dlab().clear_bit());
-    }
-
-    fn try_recv(&self) -> Option<u8> {
-        let block = self.hardware();
-        if block.lsr.read().dr().bit_is_set() {
-            Some(block.rbr().read().bits() as _)
-        } else {
+            self.rts(true);
             None
         }
     }
@@ -407,9 +191,336 @@ impl PollingSerial {
                 .rt()
                 .two_less_than_full()
         });
+        // Enable loopback
+        // block.mcr.modify(|_, w| w.loop_().loop_back());
+        // Enable line status & modem status interrupt
+        // block.ier().modify(
+        //     |_, w| w.edssi().enable(), // .edssi().enable()
+        // );
+        // self.rts(true);
+
+        // Enable received_data_available_interrupt
+        self.enable_rdai();
     }
 
+    #[inline]
+    pub fn read_rts(&self) -> bool {
+        self.hardware().mcr.read().rts().is_asserted()
+    }
+
+    #[inline]
+    pub fn rts(&self, is_asserted: bool) {
+        self.hardware().mcr.modify(|_, w| w.rts().bit(is_asserted))
+    }
+
+    #[inline]
+    pub fn cts(&self) -> bool {
+        self.hardware().msr.read().cts().bit()
+    }
+
+    #[inline]
+    pub fn dcts(&self) -> bool {
+        self.hardware().msr.read().dcts().bit()
+    }
+
+    #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+    pub fn interrupt_handler(&mut self) {
+        // println!("[SERIAL] Interrupt!");
+
+        use uart::iir::IID_A;
+
+        use crate::trace::push_trace;
+        while let Some(int_type) = self.hardware().iir().read().iid().variant() {
+            if int_type == IID_A::NO_INTERRUPT_PENDING {
+                break;
+            }
+            let intr_id: usize = int_type as u8 as _;
+            push_trace(SERIAL_INTR_ENTER + intr_id);
+            self.intr_count += 1;
+            match int_type {
+                IID_A::RECEIVED_DATA_AVAILABLE | IID_A::CHARACTER_TIMEOUT => {
+                    // println!("[SERIAL] Received data available");
+                    self.rx_intr_count += 1;
+                    while let Some(ch) = self.try_recv() {
+                        if self.rx_fifo_count == 0 {
+                            self.rts(false);
+                        }
+                        self.rx_fifo_count += 1;
+                        if self.rx_fifo_count == FIFO_DEPTH {
+                            self.rts(true);
+                            self.rx_fifo_count = 0;
+                        }
+                        if self.rx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
+                            self.rx_buffer.push_back(ch);
+                            self.rx_count += 1;
+                        } else {
+                            // println!("[USER UART] Serial rx buffer overflow!");
+                            self.disable_rdai();
+                            break;
+                        }
+                    }
+                }
+                IID_A::THR_EMPTY => {
+                    // println!("[SERIAL] Transmitter Holding Register Empty");
+                    self.tx_intr_count += 1;
+                    while self.tx_fifo_count < FIFO_DEPTH {
+                        if let Some(ch) = self.tx_buffer.pop_front() {
+                            self.send(ch);
+                            self.tx_count += 1;
+                            self.tx_fifo_count += 1;
+                        } else {
+                            self.disable_threi();
+                            break;
+                        }
+                    }
+                }
+                IID_A::RECEIVER_LINE_STATUS => {
+                    let block = self.hardware();
+                    let lsr = block.lsr.read();
+                    // if lsr.bi().bit_is_set() {
+                    if lsr.fifoerr().is_error() {
+                        if lsr.bi().bit_is_set() {
+                            println!("[uart] lsr.BI!");
+                        }
+                        if lsr.fe().bit_is_set() {
+                            println!("[uart] lsr.FE!");
+                        }
+                        if lsr.pe().bit_is_set() {
+                            println!("[uart] lsr.PE!");
+                        }
+                    }
+                    if lsr.oe().bit_is_set() {
+                        block.mcr.modify(|_, w| w.rts().deasserted());
+                        println!("[uart] lsr.OE!");
+                    }
+                }
+                IID_A::MODEM_STATUS => {
+                    // self.cts_asserted = self.cts();
+                    // if self.dcts() && self.cts() {
+                    //     self.tx_fifo_count = 0;
+                    // } else
+                    {
+                        let block = self.hardware();
+                        println!(
+                            "[USER SERIAL] EDSSI, MSR: {:#x}, LSR: {:#x}, IER: {:#x}",
+                            block.msr.read().bits(),
+                            block.lsr.read().bits(),
+                            block.ier().read().bits()
+                        );
+                    }
+                }
+                _ => {
+                    println!("[USER SERIAL] {:?} not supported!", int_type);
+                }
+            }
+            push_trace(SERIAL_INTR_EXIT + intr_id);
+        }
+    }
+}
+
+impl Write<u8> for BufferedSerial {
+    type Error = Infallible;
+
+    #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+    fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
+        if self.tx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
+            self.tx_buffer.push_back(word);
+            if self.tx_fifo_count >= FIFO_DEPTH {
+                if self.dcts() && self.cts() {
+                    self.tx_fifo_count = 0;
+                    self.enable_threi();
+                }
+            } else if !self.tx_intr_enabled {
+                self.enable_threi();
+            }
+        } else {
+            // println!("[USER SERIAL] Tx buffer overflow!");
+            return Err(nb::Error::WouldBlock);
+        }
+        Ok(())
+    }
+
+    fn try_flush(&mut self) -> nb::Result<(), Self::Error> {
+        todo!()
+    }
+}
+
+impl Read<u8> for BufferedSerial {
+    type Error = Infallible;
+
+    fn try_read(&mut self) -> nb::Result<u8, Self::Error> {
+        if let Some(ch) = self.rx_buffer.pop_front() {
+            Ok(ch)
+        } else {
+            if !self.rx_intr_enabled {
+                self.enable_rdai();
+            }
+            Err(nb::Error::WouldBlock)
+        }
+    }
+}
+
+impl Drop for BufferedSerial {
+    fn drop(&mut self) {
+        let block = self.hardware();
+        block.ier().reset();
+        let _unused = block.msr.read().bits();
+        let _unused = block.lsr.read().bits();
+        self.rts(false);
+        // reset Rx & Tx FIFO, disable FIFO
+        block
+            .fcr()
+            .write(|w| w.fifoe().clear_bit().rfifor().set_bit().xfifor().set_bit());
+    }
+}
+
+pub struct PollingSerial {
+    base_address: usize,
+    pub rx_count: usize,
+    pub tx_count: usize,
+    pub tx_fifo_count: usize,
+    pub rx_fifo_count: usize,
+}
+
+impl PollingSerial {
+    pub fn new(base_address: usize) -> Self {
+        PollingSerial {
+            base_address,
+            rx_count: 0,
+            tx_count: 0,
+            tx_fifo_count: 0,
+            rx_fifo_count: 0,
+        }
+    }
+
+    fn hardware(&self) -> &uart::RegisterBlock {
+        unsafe { &*(self.base_address as *const _) }
+    }
+
+    fn set_divisor(&self, clock: usize, baud_rate: usize) {
+        let block = self.hardware();
+        let divisor = clock / (16 * baud_rate);
+        block.lcr.write(|w| w.dlab().divisor_latch());
+        #[cfg(feature = "board_lrv")]
+        {
+            block
+                .dll()
+                .write(|w| unsafe { w.bits((divisor & 0b1111_1111) as u32) });
+            block
+                .dlh()
+                .write(|w| unsafe { w.bits(((divisor >> 8) & 0b1111_1111) as u32) });
+        }
+        #[cfg(feature = "board_qemu")]
+        {
+            block
+                .dll()
+                .write(|w| unsafe { w.bits((divisor & 0b1111_1111) as u8) });
+            block
+                .dlh()
+                .write(|w| unsafe { w.bits(((divisor >> 8) & 0b1111_1111) as u8) });
+        }
+
+        block.lcr.write(|w| w.dlab().rx_buffer());
+    }
+
+    #[inline]
+    pub fn rts(&self, is_asserted: bool) {
+        self.hardware().mcr.modify(|_, w| w.rts().bit(is_asserted))
+    }
+
+    #[inline]
+    pub fn cts(&self) -> bool {
+        self.hardware().msr.read().cts().bit()
+    }
+
+    #[inline]
+    fn dcts(&self) -> bool {
+        self.hardware().msr.read().dcts().bit()
+    }
+
+    #[inline]
+    pub fn iid_rda(&self) -> bool {
+        self.hardware()
+            .iir()
+            .read()
+            .iid()
+            .is_received_data_available()
+    }
+
+    #[inline]
+    fn try_recv(&self) -> Option<u8> {
+        let block = self.hardware();
+        if block.lsr.read().dr().is_ready() {
+            Some(block.rbr().read().rbr().bits())
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn send(&self, ch: u8) {
+        let block = self.hardware();
+        block.thr().write(|w| w.thr().variant(ch));
+    }
+
+    pub fn hardware_init(&mut self, baud_rate: usize) {
+        let block = self.hardware();
+        let _unused = block.msr.read().bits();
+        let _unused = block.lsr.read().bits();
+        block.lcr.reset();
+        // No modem control
+        block.mcr.reset();
+        block.ier().reset();
+        block.fcr().reset();
+
+        // Enable DLAB and Set divisor
+        self.set_divisor(100_000_000, baud_rate);
+        // Disable DLAB and set word length 8 bits, no parity, 1 stop bit
+        block
+            .lcr
+            .modify(|_, w| w.dls().eight().pen().disabled().stop().one());
+        // Enable FIFO
+        block.fcr().write(|w| {
+            w.fifoe()
+                .set_bit()
+                .rfifor()
+                .set_bit()
+                .xfifor()
+                .set_bit()
+                .rt()
+                .two_less_than_full()
+        });
+
+        // Loopback
+        // block.mcr.modify(|_, w| w.loop_().loop_back());
+        // block.mcr.modify(|_, w| w.rts().asserted());
+    }
+
+    #[inline]
     pub fn interrupt_handler(&mut self) {}
+
+    #[inline]
+    pub fn error_handler(&self) -> bool {
+        let block = self.hardware();
+        let lsr = block.lsr.read();
+        // if lsr.fifoerr().is_error() {
+        if lsr.bi().bit_is_set() {
+            println!("[uart] lsr.BI!");
+        }
+        if lsr.fe().bit_is_set() {
+            println!("[uart] lsr.FE!");
+        }
+        if lsr.pe().bit_is_set() {
+            println!("[uart] lsr.PE!");
+        }
+        // }
+        if lsr.oe().bit_is_set() {
+            block.mcr.modify(|_, w| w.rts().deasserted());
+            println!("[uart] lsr.OE!");
+            return true;
+        }
+        false
+    }
 }
 
 impl Write<u8> for PollingSerial {
@@ -418,8 +529,13 @@ impl Write<u8> for PollingSerial {
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
         while self.tx_fifo_count >= FIFO_DEPTH {
-            if self.hardware().lsr.read().thre().bit_is_set() {
-                self.tx_fifo_count = 0;
+            if self.dcts() && self.cts() {
+                if self.hardware().lsr.read().thre().bit_is_set() {
+                    self.tx_fifo_count = 0;
+                }
+            } else {
+                return Err(nb::Error::WouldBlock);
+                // println!("tx fifo block!");
             }
         }
         self.send(word);
@@ -439,7 +555,15 @@ impl Read<u8> for PollingSerial {
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     fn try_read(&mut self) -> nb::Result<u8, Self::Error> {
         if let Some(ch) = self.try_recv() {
+            if self.rx_fifo_count == 0 {
+                self.rts(false);
+            }
             self.rx_count += 1;
+            self.rx_fifo_count += 1;
+            if self.rx_fifo_count == FIFO_DEPTH {
+                self.rts(true);
+                self.rx_fifo_count = 0;
+            }
             Ok(ch)
         } else {
             Err(nb::Error::WouldBlock)
@@ -453,6 +577,7 @@ impl Drop for PollingSerial {
         block.ier().reset();
         let _unused = block.msr.read().bits();
         let _unused = block.lsr.read().bits();
+        self.rts(false);
         // reset Rx & Tx FIFO, disable FIFO
         block
             .fcr()

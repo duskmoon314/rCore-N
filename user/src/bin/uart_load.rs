@@ -5,13 +5,17 @@
 extern crate user_lib;
 extern crate alloc;
 
-use alloc::sync::Arc;
+use alloc::{sync::Arc, vec::Vec};
 use bitflags::bitflags;
-use core::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicUsize, Ordering::Relaxed};
+use core::{
+    num::Wrapping,
+    sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicUsize, Ordering::Relaxed},
+};
 use embedded_hal::serial::{Read, Write};
 use executor::spawn;
 use heapless::spsc::Queue;
 use lazy_static::*;
+use nb::block;
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use riscv::register::uie;
@@ -21,7 +25,7 @@ use user_lib::{
     trace::{push_trace, SERIAL_CALL_ENTER, SERIAL_CALL_EXIT, U_TRAP_RETURN},
     trap::{get_context, hart_id, Plic},
     user_uart::*,
-    write, yield_,
+    write,
 };
 
 static UART_IRQN: AtomicU16 = AtomicU16::new(0);
@@ -32,12 +36,16 @@ static RX_SEED: AtomicU32 = AtomicU32::new(0);
 static TX_SEED: AtomicU32 = AtomicU32::new(0);
 static MODE: AtomicU32 = AtomicU32::new(0);
 
-const TEST_TIME_US: isize = 1000_000;
+const TEST_TIME_US: isize = 1_000_000;
 // const HALF_FIFO_DEPTH: usize = FIFO_DEPTH / 2;
-const HALF_FIFO_DEPTH: usize = 50;
+const HALF_FIFO_DEPTH: usize = 2;
+
+// const BAUD_RATE: usize = 9600;
+// const BAUD_RATE: usize = 115_200;
+// const BAUD_RATE: usize = 921_600;
 // const BAUD_RATE: usize = 1_250_000;
-const BAUD_RATE: usize = 6250_000;
-const MAX_SHIFT: isize = 10;
+const BAUD_RATE: usize = 6_250_000;
+const MAX_SHIFT: isize = 2;
 
 const SERIAL_POLL_READ: usize = 63;
 const SERIAL_POLL_WRITE: usize = 64;
@@ -79,7 +87,8 @@ pub fn main() -> i32 {
 
     let (rx_count, tx_count, error_count) = match UartLoadConfig::from_bits(MODE.load(Relaxed)) {
         Some(UartLoadConfig::KERNEL_MODE) => kernel_driver_test(),
-        Some(UartLoadConfig::POLLING_MODE) => user_polling_test(),
+        // Some(UartLoadConfig::POLLING_MODE) => user_polling_test(),
+        Some(UartLoadConfig::POLLING_MODE) => user_pingpong_test(),
         Some(UartLoadConfig::INTR_MODE) => user_intr_test(),
         Some(UartLoadConfig::ASYNC_MODE) => user_async_test(),
         _ => {
@@ -91,8 +100,11 @@ pub fn main() -> i32 {
         sleep(100);
     }
     println!(
-        "Test finished, {} bytes sent, {} bytes received, {} bytes error.",
-        tx_count, rx_count, error_count
+        "[uart {}] Test finished, {} bytes sent, {} bytes received, {} bytes error.",
+        UART_IRQN.load(Relaxed),
+        tx_count,
+        rx_count,
+        error_count
     );
     0
 }
@@ -153,6 +165,7 @@ fn kernel_driver_test() -> (usize, usize, usize) {
     (rx_count, tx_count, error_count)
 }
 
+#[allow(unused)]
 fn user_polling_test() -> (usize, usize, usize) {
     let mut hasher = Hasher::new();
     let uart_irqn = UART_IRQN.load(Relaxed);
@@ -211,6 +224,271 @@ fn user_polling_test() -> (usize, usize, usize) {
     (serial.rx_count, serial.tx_count, error_count)
 }
 
+#[allow(unused)]
+fn user_pingpong_test() -> (usize, usize, usize) {
+    let uart_irqn = UART_IRQN.load(Relaxed);
+    let claim_res = claim_ext_int(uart_irqn as usize);
+    let mut serial = PollingSerial::new(get_base_addr_from_irq(uart_irqn));
+    serial.hardware_init(BAUD_RATE);
+    println!("[uart load] Polling mode, claim result: {:#x}", claim_res);
+    let mut error_count: usize = 0;
+    let mut err_pos = -1;
+    let (mut next_tx, mut next_rx) = (Wrapping(0u8), Wrapping(0u8));
+    let mut block_cnt = 0;
+    let mut batch_rx_cnt = 0;
+    const BATCH_SIZE: u8 = 16;
+
+    let time_us = get_time() * 1_000;
+    set_timer(time_us + TEST_TIME_US);
+
+    while !(IS_TIMEOUT.load(Relaxed)) {
+        push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_WRITE);
+        for _ in 0..BATCH_SIZE {
+            if let Ok(()) = serial.try_write(next_tx.0) {
+                next_tx += 1;
+            } else {
+                block_cnt += 1;
+            }
+        }
+        push_trace(SERIAL_CALL_EXIT + SERIAL_POLL_WRITE);
+
+        push_trace(SERIAL_CALL_ENTER + SERIAL_POLL_READ);
+        while let Ok(rx_val) = serial.try_read() {
+            let expect = next_rx.0;
+            if rx_val != expect {
+                err_pos = serial.rx_count as isize;
+                println!(
+                    "[uart {}] error at {}, expect: {:x}, err_val: {:x}",
+                    uart_irqn, err_pos, expect, rx_val
+                );
+                error_count += 1;
+            } else {
+                next_rx += 1;
+            }
+            if error_count > 3 {
+                break;
+            }
+        }
+        push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_READ);
+
+        if error_count > 3 {
+            break;
+        }
+
+        // while !(IS_TIMEOUT.load(Relaxed)) {
+        //     serial.error_handler();
+        //     serial.interrupt_handler();
+        //     if let Ok(rx_val) = serial.try_read() {
+        //         let expect = (next_tx + Wrapping(batch_read_count as _)).0;
+        //         if rx_val != expect {
+        //             err_pos = serial.rx_count as isize;
+        //             println!(
+        //                 "[uart load] error at {}, expect: {:x}, err_val: {:x}",
+        //                 err_pos, expect, rx_val
+        //             );
+        //             error_count += 1;
+        //         } else {
+        //             batch_read_count += 1;
+        //         }
+        //     }
+        //     if batch_read_count == BATCH_SIZE as _ {
+        //         next_tx += BATCH_SIZE;
+        //         break;
+        //     }
+        // }
+    }
+
+    if uart_irqn == 14 || uart_irqn == 6 {
+        sleep(500);
+    }
+    println!("[uart load] block cnt: {}, err pos: {}", block_cnt, err_pos);
+    (serial.rx_count, serial.tx_count, error_count)
+}
+
+#[allow(unused)]
+fn user_flow_control_test() -> (usize, usize, usize) {
+    let uart_irqn = UART_IRQN.load(Relaxed);
+    let claim_res = claim_ext_int(uart_irqn as usize);
+    let mut serial = PollingSerial::new(get_base_addr_from_irq(UART_IRQN.load(Relaxed)));
+    serial.hardware_init(BAUD_RATE);
+    println!("[uart load] Polling mode, claim result: {:#x}", claim_res);
+    let mut error_count: usize = 0;
+
+    let time_us = get_time() * 1_000;
+    set_timer(time_us + TEST_TIME_US);
+
+    const BATCH_SIZE: u8 = 20;
+    const TX_WORD: u8 = 0x75;
+
+    if uart_irqn & 1 == 0 {
+        // Tx
+        serial.rts(false);
+
+        while !serial.cts() {}
+        println!("[tx] cts set!");
+        for idx in 0..BATCH_SIZE {
+            println!("[tx] tx {}", idx);
+            block!(serial.try_write(idx));
+        }
+        serial.rts(false);
+    } else {
+        // Rx
+        // println!("[fc rx] rts set!");
+        serial.rts(true);
+        while !serial.iid_rda() {}
+        serial.rts(false);
+        println!("[rx] rts clear!");
+        let mut rx_cnt = 0;
+        while rx_cnt < BATCH_SIZE {
+            if let Ok(ch) = serial.try_read() {
+                rx_cnt += 1;
+                println!("[rx] rx {}", ch);
+            }
+        }
+        serial.rts(false);
+    }
+
+    println!("--- role change! ---");
+
+    if uart_irqn & 1 == 1 {
+        // Tx
+        serial.rts(false);
+        while !serial.cts() {}
+        // println!("[fc tx] cts set!");
+        for idx in 0..BATCH_SIZE {
+            // println!("[fc tx] sending {} char", idx);
+            block!(serial.try_write(idx));
+        }
+        serial.rts(false);
+    } else {
+        // Rx
+        println!("[rx] rts set!");
+        serial.rts(true);
+        while !serial.iid_rda() {}
+        serial.rts(false);
+        println!("[rx] rts clear!");
+
+        let mut rx_cnt = 0;
+        while rx_cnt < BATCH_SIZE {
+            if let Ok(ch) = serial.try_read() {
+                rx_cnt += 1;
+                println!("[rx] rx {}", ch);
+            }
+        }
+    }
+
+    if uart_irqn == 14 || uart_irqn == 6 {
+        sleep(500);
+    }
+    println!("uart: {}", uart_irqn);
+    (serial.rx_count, serial.tx_count, error_count)
+}
+
+#[allow(unused)]
+fn user_full_load_test() -> (usize, usize, usize) {
+    let uart_irqn = UART_IRQN.load(Relaxed);
+    let claim_res = claim_ext_int(uart_irqn as usize);
+    let mut serial = PollingSerial::new(get_base_addr_from_irq(UART_IRQN.load(Relaxed)));
+    serial.hardware_init(BAUD_RATE);
+    println!("[uart load] Polling mode, claim result: {:#x}", claim_res);
+    let mut error_count: usize = 0;
+
+    const BATCH_SIZE: u8 = 16;
+    const TX_WORD: u8 = 0x75;
+    const ACK_WORD: u8 = 0x65;
+
+    let time_us = get_time() * 1_000;
+    set_timer(time_us + TEST_TIME_US);
+
+    let mut rx_cnt = 0;
+
+    while !(IS_TIMEOUT.load(Relaxed)) {
+        push_trace(SERIAL_CALL_ENTER + SERIAL_POLL_READ);
+
+        if uart_irqn & 1 == 0 {
+            // Tx
+            for _ in 0..BATCH_SIZE {
+                serial.try_write(TX_WORD).unwrap();
+            }
+            if let Ok(ch) = serial.try_read() {
+                assert!(ch == ACK_WORD);
+            }
+            serial.error_handler();
+        } else {
+            // Rx
+            // while let Some(bulk_buf) = serial.try_bulk_recv() {
+            //     for ch in bulk_buf {
+            //         assert!(ch == TX_WORD);
+            //     }
+            //     rx_cnt += BULK_BUF_SIZE;
+            //     if serial.error_handler() {
+            //         error_count += 1;
+            //     }
+            // }
+            while let Ok(ch) = serial.try_read() {
+                assert!(ch == TX_WORD);
+                rx_cnt += 1;
+                if serial.error_handler() {
+                    error_count += 1;
+                }
+            }
+            if rx_cnt >= 16 {
+                serial.try_write(ACK_WORD).unwrap();
+                rx_cnt = 0;
+            }
+        }
+        push_trace(SERIAL_CALL_EXIT + SERIAL_POLL_READ);
+
+        push_trace(SERIAL_CALL_ENTER + SERIAL_POLL_WRITE);
+    }
+
+    if uart_irqn == 14 || uart_irqn == 6 {
+        sleep(500);
+    }
+    (serial.rx_count, serial.tx_count, error_count)
+}
+
+#[allow(unused)]
+fn user_short_buf_test() -> (usize, usize, usize) {
+    let uart_irqn = UART_IRQN.load(Relaxed);
+    let claim_res = claim_ext_int(uart_irqn as usize);
+    let mut serial = PollingSerial::new(get_base_addr_from_irq(UART_IRQN.load(Relaxed)));
+    serial.hardware_init(BAUD_RATE);
+    println!("[uart load] Polling mode, claim result: {:#x}", claim_res);
+    let mut error_count: usize = 0;
+
+    const BATCH_SIZE: u8 = 16;
+
+    let time_us = get_time() * 1_000;
+    set_timer(time_us + TEST_TIME_US);
+
+    let mut buf = Vec::new();
+    if uart_irqn & 1 == 0 {
+        for i in 0..16 {
+            buf.push(i);
+        }
+    }
+
+    while !(IS_TIMEOUT.load(Relaxed)) {
+        while let Some(ch) = buf.pop() {
+            serial.try_write(ch).unwrap();
+            serial.error_handler();
+        }
+        // push_trace(SERIAL_CALL_EXIT + SERIAL_POLL_READ);
+
+        // push_trace(SERIAL_CALL_ENTER + SERIAL_POLL_WRITE);
+        while let Ok(rx_val) = serial.try_read() {
+            buf.push(rx_val);
+            serial.error_handler();
+        }
+    }
+
+    if uart_irqn == 14 || uart_irqn == 6 {
+        sleep(500);
+    }
+    (serial.rx_count, serial.tx_count, error_count)
+}
+
 fn user_intr_test() -> (usize, usize, usize) {
     unsafe {
         uie::clear_uext();
@@ -253,22 +531,36 @@ fn user_intr_test() -> (usize, usize, usize) {
         push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_READ);
 
         push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_WRITE);
-        for _ in 0..HALF_FIFO_DEPTH {
+        // for _ in 0..HALF_FIFO_DEPTH {
+        while !(IS_TIMEOUT.load(Relaxed)) {
             if let Ok(rx_val) = serial.try_read() {
                 let mut max_shift = MAX_SHIFT;
                 if err_pos == -1 && rx_val != expect_rx as u8 {
                     err_pos = serial.rx_count as isize;
                 }
                 while rx_val != expect_rx as u8 && max_shift > 0 {
+                    println!(
+                        "[uart {}] error at {}, expect: {:x}, err_val: {:x}",
+                        uart_irqn, err_pos, expect_rx, rx_val
+                    );
                     error_count += 1;
                     max_shift -= 1;
                     expect_rx = rx_rng.next_u32();
                 }
+                if error_count > 3 {
+                    break;
+                }
                 // hasher.update(&[rx_val]);
                 expect_rx = rx_rng.next_u32();
+            } else {
+                break;
             }
         }
         push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_WRITE);
+
+        if error_count > 3 {
+            break;
+        }
 
         if HAS_INTR.load(Relaxed) {
             serial.interrupt_handler();
