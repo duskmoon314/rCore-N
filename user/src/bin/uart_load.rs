@@ -38,7 +38,7 @@ static MODE: AtomicU32 = AtomicU32::new(0);
 
 const TEST_TIME_US: isize = 1_000_000;
 // const HALF_FIFO_DEPTH: usize = FIFO_DEPTH / 2;
-const HALF_FIFO_DEPTH: usize = 2;
+const HALF_FIFO_DEPTH: usize = 10;
 
 // const BAUD_RATE: usize = 9600;
 // const BAUD_RATE: usize = 115_200;
@@ -52,12 +52,56 @@ const SERIAL_POLL_WRITE: usize = 64;
 const SERIAL_INTR_READ: usize = 65;
 const SERIAL_INTR_WRITE: usize = 66;
 
-type Rng = Mutex<XorShiftRng>;
+// type Rng = Mutex<XorShiftRng>;
+type RngInner = IncOneRng;
+type Rng = Mutex<RngInner>;
 type Hasher = blake3::Hasher;
 
+struct IncOneRng {
+    x: Wrapping<u8>,
+}
+
+impl IncOneRng {
+    fn next_u8(&mut self) -> u8 {
+        self.x += 1;
+        self.x.0
+    }
+}
+
+impl RngCore for IncOneRng {
+    fn next_u32(&mut self) -> u32 {
+        self.next_u8() as _
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        self.next_u8() as _
+    }
+
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        for byte in dest {
+            *byte = self.next_u8();
+        }
+    }
+
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+        self.fill_bytes(dest);
+        Ok(())
+    }
+}
+
+impl SeedableRng for IncOneRng {
+    type Seed = [u8; 1];
+
+    fn from_seed(seed: Self::Seed) -> Self {
+        IncOneRng {
+            x: Wrapping(seed[0]),
+        }
+    }
+}
+
 lazy_static! {
-    static ref RX_RNG: Rng = Mutex::new(XorShiftRng::seed_from_u64(RX_SEED.load(Relaxed) as u64));
-    static ref TX_RNG: Rng = Mutex::new(XorShiftRng::seed_from_u64(TX_SEED.load(Relaxed) as u64));
+    static ref RX_RNG: Rng = Mutex::new(RngInner::seed_from_u64(RX_SEED.load(Relaxed) as u64));
+    static ref TX_RNG: Rng = Mutex::new(RngInner::seed_from_u64(TX_SEED.load(Relaxed) as u64));
 }
 
 bitflags! {
@@ -531,34 +575,29 @@ fn user_intr_test() -> (usize, usize, usize) {
         push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_READ);
 
         push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_WRITE);
-        // for _ in 0..HALF_FIFO_DEPTH {
-        while !(IS_TIMEOUT.load(Relaxed)) {
-            if let Ok(rx_val) = serial.try_read() {
-                let mut max_shift = MAX_SHIFT;
-                if err_pos == -1 && rx_val != expect_rx as u8 {
-                    err_pos = serial.rx_count as isize;
-                }
-                while rx_val != expect_rx as u8 && max_shift > 0 {
-                    println!(
-                        "[uart {}] error at {}, expect: {:x}, err_val: {:x}",
-                        uart_irqn, err_pos, expect_rx, rx_val
-                    );
-                    error_count += 1;
-                    max_shift -= 1;
-                    expect_rx = rx_rng.next_u32();
-                }
-                if error_count > 3 {
-                    break;
-                }
-                // hasher.update(&[rx_val]);
+        while let Ok(rx_val) = serial.try_read() {
+            let mut max_shift = MAX_SHIFT;
+            if err_pos == -1 && rx_val != expect_rx as u8 {
+                err_pos = serial.rx_count as isize;
+            }
+            while rx_val != expect_rx as u8 && max_shift > 0 {
+                println!(
+                    "[uart {}] error at {}, expect: {:x}, err_val: {:x}",
+                    uart_irqn, err_pos, expect_rx, rx_val
+                );
+                error_count += 1;
+                max_shift -= 1;
                 expect_rx = rx_rng.next_u32();
-            } else {
+            }
+            if error_count > 6 {
                 break;
             }
+            // hasher.update(&[rx_val]);
+            expect_rx = rx_rng.next_u32();
         }
         push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_WRITE);
 
-        if error_count > 3 {
+        if error_count > 6 {
             break;
         }
 
@@ -588,7 +627,9 @@ fn user_intr_test() -> (usize, usize, usize) {
 static ERROR_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 async fn read_task(serial: Arc<AsyncSerial>) {
-    let mut error_count = 0;
+    let mut error_count = ERROR_COUNT.load(Relaxed);
+    let uart_irqn = UART_IRQN.load(Relaxed);
+
     let mut rx_buf = [0; HALF_FIFO_DEPTH];
     serial.read(&mut rx_buf).await;
     let mut rx_rng = RX_RNG.lock();
@@ -597,14 +638,21 @@ async fn read_task(serial: Arc<AsyncSerial>) {
     for rx_val in rx_buf {
         let mut max_shift = MAX_SHIFT;
         while rx_val != expect_rx as u8 && max_shift > 0 {
+            println!(
+                "[uart {}] error at {}, expect: {:x}, err_val: {:x}",
+                uart_irqn, error_count, expect_rx, rx_val
+            );
             error_count += 1;
             max_shift -= 1;
             expect_rx = rx_rng.next_u32();
         }
+        // if error_count > 6 {
+        //     break;
+        // }
         // hasher.update(&[rx_val]);
         expect_rx = rx_rng.next_u32();
     }
-    ERROR_COUNT.fetch_add(error_count, Relaxed);
+    ERROR_COUNT.store(error_count, Relaxed);
 }
 
 async fn write_task(serial: Arc<AsyncSerial>) {
@@ -656,15 +704,19 @@ fn user_async_test() -> (usize, usize, usize) {
 
     while !(IS_TIMEOUT.load(Relaxed)) {
         push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_READ);
+        // if uart_irqn & 1 == 1 {
         if !reader.run_until_idle() {
-            // println!("[uart load] spawn read tasks");
-            reader.spawn(read_task(serial.clone()));
+            println!("[uart {}] spawn read tasks", uart_irqn);
         }
+        reader.spawn(read_task(serial.clone()));
+        // }
         push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_READ);
 
         push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_WRITE);
-        if !writer.run_until_idle() {
-            // println!("[uart load] spawn write tasks");
+        if uart_irqn & 1 == 0 {
+            if !writer.run_until_idle() {
+                println!("[uart {}] spawn write tasks", uart_irqn);
+            }
             writer.spawn(write_task(serial.clone()));
         }
         push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_WRITE);
