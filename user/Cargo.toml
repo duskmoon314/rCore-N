@@ -33,3 +33,4 @@ qemu-pac = { path = "../pac/qemu-pac", optional = true }
 [features]
 board_qemu = ["uart8250", "qemu-pac"]
 board_lrv = ["uart_xilinx", "lrv-pac"]
+trace = []

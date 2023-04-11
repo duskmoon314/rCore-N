@@ -54,7 +54,7 @@ extern "C" {
 
 pub fn push_trace(event_id: usize) -> usize {
     let mut cycle: usize = 0;
-    #[cfg(feature = "board_lrv")]
+    #[cfg(all(feature = "board_lrv", feature = "trace"))]
     unsafe {
         // __push_trace(event_id)
         core::arch::asm!(
