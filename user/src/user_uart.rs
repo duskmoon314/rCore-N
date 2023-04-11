@@ -43,6 +43,7 @@ mod serial_config {
     pub use uart_xilinx::uart_16550::{uart::LSR, InterruptType, MmioUartAxi16550};
     pub type SerialHardware = MmioUartAxi16550<'static>;
     pub const FIFO_DEPTH: usize = 16;
+    pub const RTS_PULSE_WIDTH: usize = 8;
     pub const SERIAL_NUM: usize = 4;
     pub const SERIAL_BASE_ADDRESS: usize = 0x6000_1000;
     pub const SERIAL_ADDRESS_STRIDE: usize = 0x1000;
@@ -377,8 +378,9 @@ pub struct PollingSerial {
     base_address: usize,
     pub rx_count: usize,
     pub tx_count: usize,
-    pub tx_fifo_count: usize,
+    pub tx_fifo_count: isize,
     pub rx_fifo_count: usize,
+    prev_cts: bool,
 }
 
 impl PollingSerial {
@@ -389,6 +391,7 @@ impl PollingSerial {
             tx_count: 0,
             tx_fifo_count: 0,
             rx_fifo_count: 0,
+            prev_cts: true,
         }
     }
 
@@ -433,7 +436,7 @@ impl PollingSerial {
     }
 
     #[inline]
-    fn dcts(&self) -> bool {
+    pub fn dcts(&self) -> bool {
         self.hardware().msr.read().dcts().bit()
     }
 
@@ -493,6 +496,8 @@ impl PollingSerial {
         // Loopback
         // block.mcr.modify(|_, w| w.loop_().loop_back());
         // block.mcr.modify(|_, w| w.rts().asserted());
+        self.rts(true);
+        let _unused = self.dcts();
     }
 
     #[inline]
@@ -502,17 +507,17 @@ impl PollingSerial {
     pub fn error_handler(&self) -> bool {
         let block = self.hardware();
         let lsr = block.lsr.read();
-        // if lsr.fifoerr().is_error() {
-        if lsr.bi().bit_is_set() {
-            println!("[uart] lsr.BI!");
+        if lsr.fifoerr().is_error() {
+            if lsr.bi().bit_is_set() {
+                println!("[uart] lsr.BI!");
+            }
+            if lsr.fe().bit_is_set() {
+                println!("[uart] lsr.FE!");
+            }
+            if lsr.pe().bit_is_set() {
+                println!("[uart] lsr.PE!");
+            }
         }
-        if lsr.fe().bit_is_set() {
-            println!("[uart] lsr.FE!");
-        }
-        if lsr.pe().bit_is_set() {
-            println!("[uart] lsr.PE!");
-        }
-        // }
         if lsr.oe().bit_is_set() {
             block.mcr.modify(|_, w| w.rts().deasserted());
             println!("[uart] lsr.OE!");
@@ -527,15 +532,24 @@ impl Write<u8> for PollingSerial {
 
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
-        while self.tx_fifo_count >= FIFO_DEPTH {
-            if self.dcts() && self.cts() {
-                if self.hardware().lsr.read().thre().bit_is_set() {
-                    self.tx_fifo_count = 0;
-                }
+        if self.dcts() {
+            let cts = self.cts();
+            if cts == self.prev_cts {
+                // while !self.hardware().lsr.read().thre().is_empty() {}
+                self.tx_fifo_count -= (RTS_PULSE_WIDTH * 2) as isize;
             } else {
-                return Err(nb::Error::WouldBlock);
-                // println!("tx fifo block!");
+                self.tx_fifo_count -= RTS_PULSE_WIDTH as isize;
             }
+            self.prev_cts = cts;
+        } else {
+            // println!("tx fifo block!");
+        }
+
+        // assert!(self.tx_fifo_count >= 0);
+        // assert!(self.tx_fifo_count <= FIFO_DEPTH as _);
+
+        if self.tx_fifo_count == FIFO_DEPTH as _ {
+            return Err(nb::Error::WouldBlock);
         }
         self.send(word);
         self.tx_count += 1;
@@ -554,12 +568,11 @@ impl Read<u8> for PollingSerial {
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     fn try_read(&mut self) -> nb::Result<u8, Self::Error> {
         if let Some(ch) = self.try_recv() {
-            if self.rx_fifo_count == 0 {
-                self.rts(false);
-            }
             self.rx_count += 1;
             self.rx_fifo_count += 1;
-            if self.rx_fifo_count == FIFO_DEPTH {
+            if self.rx_fifo_count == RTS_PULSE_WIDTH {
+                self.rts(false);
+            } else if self.rx_fifo_count == RTS_PULSE_WIDTH * 2 {
                 self.rts(true);
                 self.rx_fifo_count = 0;
             }
