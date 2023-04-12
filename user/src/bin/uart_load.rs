@@ -245,7 +245,7 @@ fn user_polling_test() -> (usize, usize, usize) {
     while !(IS_TIMEOUT.load(Relaxed)) {
         serial.error_handler();
         // if serial_number & 1 == 1 {
-        push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_WRITE);
+        push_trace(SERIAL_CALL_ENTER + SERIAL_POLL_WRITE);
         if BATCH_SIZE > 0 {
             for _ in 0..BATCH_SIZE {
                 if let Ok(()) = serial.try_write(next_tx as _) {
@@ -280,7 +280,7 @@ fn user_polling_test() -> (usize, usize, usize) {
                 break;
             }
         }
-        push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_READ);
+        push_trace(SERIAL_CALL_EXIT + SERIAL_POLL_READ);
         // }
 
         // end test early for debugging
@@ -495,10 +495,12 @@ fn user_intr_test() -> (usize, usize, usize) {
     let claim_res = claim_ext_int(uart_irqn as usize);
     let mut serial = BufferedSerial::new(get_base_addr_from_irq(uart_irqn));
     serial.hardware_init(BAUD_RATE);
+    const BATCH_SIZE: u8 = 0;
+
     let en_res = set_ext_int_enable(uart_irqn as usize, 1);
     println!(
-        "[uart load] Interrupt mode, claim result: {:#x}, enable res: {:#x}",
-        claim_res, en_res
+        "[uart load {}] Interrupt mode, claim result: {:#x}, enable res: {:#x}",
+        serial_number, claim_res, en_res
     );
     let mut error_count: usize = 0;
     let mut err_pos = -1;
@@ -508,6 +510,8 @@ fn user_intr_test() -> (usize, usize, usize) {
     let mut expect_rx = rx_rng.next_u32();
     let time_us = get_time() * 1000;
     set_timer(time_us + TEST_TIME_US);
+    // avoid glitches
+    let _unused = serial.dcts();
 
     unsafe {
         uie::set_uext();
@@ -517,18 +521,25 @@ fn user_intr_test() -> (usize, usize, usize) {
 
     while !(IS_TIMEOUT.load(Relaxed)) {
         // if serial_number & 1 == 1 {
-        push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_READ);
-        for _ in 0..HALF_FIFO_DEPTH {
-            if let Ok(()) = serial.try_write(next_tx as u8) {
+        push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_WRITE);
+        if BATCH_SIZE > 0 {
+            for _ in 0..BATCH_SIZE {
+                if let Ok(()) = serial.try_write(next_tx as u8) {
+                    // hasher.update(&[next_tx as u8]);
+                    next_tx = tx_rng.next_u32();
+                }
+            }
+        } else {
+            while let Ok(()) = serial.try_write(next_tx as u8) {
                 // hasher.update(&[next_tx as u8]);
                 next_tx = tx_rng.next_u32();
             }
         }
-        push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_READ);
+        push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_WRITE);
         // }
 
         // if serial_number & 1 == 0 {
-        push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_WRITE);
+        push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_READ);
         while let Ok(rx_val) = serial.try_read() {
             let mut max_shift = MAX_SHIFT;
             if err_pos == -1 && rx_val != expect_rx as u8 {
@@ -543,16 +554,16 @@ fn user_intr_test() -> (usize, usize, usize) {
                 max_shift -= 1;
                 expect_rx = rx_rng.next_u32();
             }
-            if error_count > 6 {
+            if error_count > MAX_ERROR_CNT {
                 break;
             }
             // hasher.update(&[rx_val]);
             expect_rx = rx_rng.next_u32();
         }
-        push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_WRITE);
+        push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_READ);
         // }
 
-        if error_count > 6 {
+        if error_count > MAX_ERROR_CNT {
             break;
         }
 

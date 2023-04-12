@@ -74,9 +74,10 @@ pub struct BufferedSerial {
     pub rx_intr_count: usize,
     pub tx_intr_count: usize,
     pub rx_fifo_count: usize,
-    pub tx_fifo_count: usize,
+    pub tx_fifo_count: isize,
     rx_intr_enabled: bool,
     tx_intr_enabled: bool,
+    prev_cts: bool,
 }
 
 impl BufferedSerial {
@@ -95,6 +96,7 @@ impl BufferedSerial {
             tx_fifo_count: 0,
             rx_intr_enabled: false,
             tx_intr_enabled: false,
+            prev_cts: true,
         }
     }
 
@@ -197,10 +199,12 @@ impl BufferedSerial {
         block
             .ier()
             .modify(|_, w| w.elsi().enable().edssi().enable());
-        // self.rts(true);
+        self.rts(true);
+        let _unused = self.dcts();
 
         // Enable received_data_available_interrupt
-        // self.enable_rdai();
+        self.enable_rdai();
+        self.enable_threi();
     }
 
     #[inline]
@@ -223,6 +227,32 @@ impl BufferedSerial {
         self.hardware().msr.read().dcts().bit()
     }
 
+    #[inline]
+    fn toggle_threi(&mut self) {
+        self.disable_threi();
+        self.enable_threi();
+    }
+
+    #[inline]
+    fn start_tx(&mut self) {
+        // assert!(self.tx_fifo_count >= 0);
+        // assert!(self.tx_fifo_count <= FIFO_DEPTH as _);
+        while self.tx_fifo_count < FIFO_DEPTH as _ {
+            if let Some(ch) = self.tx_buffer.pop_front() {
+                self.send(ch);
+                self.tx_count += 1;
+                self.tx_fifo_count += 1;
+            } else {
+                self.disable_threi();
+                break;
+            }
+        }
+
+        if self.tx_fifo_count == FIFO_DEPTH as _ {
+            self.disable_threi();
+        }
+    }
+
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
     pub fn interrupt_handler(&mut self) {
         // println!("[SERIAL] Interrupt!");
@@ -242,40 +272,26 @@ impl BufferedSerial {
                     // println!("[SERIAL] Received data available");
                     self.rx_intr_count += 1;
                     while let Some(ch) = self.try_recv() {
-                        if self.rx_fifo_count == 0 {
-                            self.rts(false);
-                        }
+                        self.rx_count += 1;
                         self.rx_fifo_count += 1;
-                        let rx_buf_len = self.rx_buffer.len();
-                        if rx_buf_len < DEFAULT_TX_BUFFER_SIZE {
-                            self.rx_buffer.push_back(ch);
-                            self.rx_count += 1;
-                            if self.rx_fifo_count == FIFO_DEPTH
-                                && rx_buf_len < DEFAULT_TX_BUFFER_SIZE - FIFO_DEPTH
-                            {
-                                self.rts(true);
-                                self.rx_fifo_count = 0;
-                            }
-                        } else {
-                            println!("[USER UART] Serial rx buffer overflow!");
+                        if self.rx_fifo_count == RTS_PULSE_WIDTH {
+                            self.rts(false);
+                        } else if self.rx_fifo_count == RTS_PULSE_WIDTH * 2 {
+                            self.rts(true);
+                            self.rx_fifo_count = 0;
+                        }
+                        self.rx_buffer.push_back(ch);
+                        if self.rx_buffer.len() >= DEFAULT_TX_BUFFER_SIZE {
+                            // println!("[USER UART] Serial rx buffer overflow!");
                             self.disable_rdai();
                             break;
                         }
                     }
                 }
                 IID_A::THR_EMPTY => {
-                    // println!("[SERIAL] Transmitter Holding Register Empty");
                     self.tx_intr_count += 1;
-                    while self.tx_fifo_count < FIFO_DEPTH {
-                        if let Some(ch) = self.tx_buffer.pop_front() {
-                            self.send(ch);
-                            self.tx_count += 1;
-                            self.tx_fifo_count += 1;
-                        } else {
-                            self.disable_threi();
-                            break;
-                        }
-                    }
+                    // println!("[SERIAL] Transmitter Holding Register Empty");
+                    self.start_tx();
                 }
                 IID_A::RECEIVER_LINE_STATUS => {
                     let block = self.hardware();
@@ -298,12 +314,17 @@ impl BufferedSerial {
                     }
                 }
                 IID_A::MODEM_STATUS => {
-                    // self.cts_asserted = self.cts();
                     if self.dcts() {
-                        if self.cts() {
-                            self.tx_fifo_count = 0;
-                            self.enable_threi();
+                        let cts = self.cts();
+                        if cts == self.prev_cts {
+                            // while !self.hardware().lsr.read().thre().is_empty() {}
+                            self.tx_fifo_count -= (RTS_PULSE_WIDTH * 2) as isize;
+                        } else {
+                            self.tx_fifo_count -= RTS_PULSE_WIDTH as isize;
                         }
+                        self.prev_cts = cts;
+                        self.toggle_threi();
+                        self.start_tx();
                     } else {
                         let block = self.hardware();
                         println!(
@@ -330,8 +351,9 @@ impl Write<u8> for BufferedSerial {
     fn try_write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
         if self.tx_buffer.len() < DEFAULT_TX_BUFFER_SIZE {
             self.tx_buffer.push_back(word);
-            if self.tx_fifo_count < FIFO_DEPTH && !self.tx_intr_enabled {
-                self.enable_threi();
+            if self.tx_fifo_count < FIFO_DEPTH as _ {
+                self.toggle_threi();
+                self.start_tx();
             }
         } else {
             // println!("[USER SERIAL] Tx buffer overflow!");
