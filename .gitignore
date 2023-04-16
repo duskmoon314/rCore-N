@@ -2,3 +2,5 @@
 debug.log
 link_app.asm
 trace/*.bin
+trace/*.sqlite
+__pycache__
