@@ -3,8 +3,8 @@ use crate::trace::{SERIAL_INTR_ENTER, SERIAL_INTR_EXIT};
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use core::future::Future;
-use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::Relaxed;
+use core::sync::atomic::{AtomicIsize, AtomicUsize};
 use core::task::{Context, Poll, Waker};
 use core::{convert::Infallible, pin::Pin, sync::atomic::AtomicBool};
 use embedded_hal::serial::{Read, Write};
@@ -636,9 +636,10 @@ pub struct AsyncSerial {
     pub rx_intr_count: AtomicUsize,
     pub tx_intr_count: AtomicUsize,
     rx_fifo_count: AtomicUsize,
-    tx_fifo_count: AtomicUsize,
+    tx_fifo_count: AtomicIsize,
     pub(super) rx_intr_enabled: AtomicBool,
     pub(super) tx_intr_enabled: AtomicBool,
+    prev_cts: AtomicBool,
     read_waker: Mutex<Option<Waker>>,
     write_waker: Mutex<Option<Waker>>,
 }
@@ -663,9 +664,10 @@ impl AsyncSerial {
             rx_intr_count: AtomicUsize::new(0),
             tx_intr_count: AtomicUsize::new(0),
             rx_fifo_count: AtomicUsize::new(0),
-            tx_fifo_count: AtomicUsize::new(0),
+            tx_fifo_count: AtomicIsize::new(0),
             rx_intr_enabled: AtomicBool::new(false),
             tx_intr_enabled: AtomicBool::new(false),
+            prev_cts: AtomicBool::new(true),
             read_waker: Mutex::new(None),
             write_waker: Mutex::new(None),
         }
@@ -799,12 +801,48 @@ impl AsyncSerial {
                 .rt()
                 .two_less_than_full()
         });
+        self.rts(true);
+        let _unused = self.dcts();
         // Enable line status & modem status interrupt
         block
             .ier()
             .modify(|_, w| w.elsi().enable().edssi().enable());
         // Enable received_data_available_interrupt
-        // self.enable_rdai();
+        self.enable_rdai();
+        self.enable_threi();
+    }
+
+    #[inline]
+    fn toggle_threi(&self) {
+        self.disable_threi();
+        self.enable_threi();
+    }
+
+    #[inline]
+    fn start_tx(&self) {
+        let mut tx_count = 0;
+        let mut tx_fifo_count = self.tx_fifo_count.load(Relaxed);
+        assert!(tx_fifo_count >= 0);
+        assert!(tx_fifo_count <= FIFO_DEPTH as _);
+        let mut con = self.tx_con.lock();
+
+        while tx_fifo_count < FIFO_DEPTH as _ {
+            if let Some(ch) = con.dequeue() {
+                self.send(ch);
+                tx_count += 1;
+                tx_fifo_count += 1;
+            } else {
+                self.disable_threi();
+                break;
+            }
+        }
+
+        if tx_fifo_count == FIFO_DEPTH as _ {
+            self.disable_threi();
+        }
+
+        self.tx_count.fetch_add(tx_count, Relaxed);
+        self.tx_fifo_count.store(tx_fifo_count, Relaxed);
     }
 
     #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
@@ -835,16 +873,17 @@ impl AsyncSerial {
                             self.rts(false);
                         }
                         rx_fifo_count += 1;
-                        if let Ok(()) = pro.enqueue(ch) {
-                            rx_count += 1;
-                            if rx_fifo_count == FIFO_DEPTH
-                                && pro.len() < pro.capacity() - FIFO_DEPTH
-                            {
-                                self.rts(true);
-                                rx_fifo_count = 0;
-                            }
-                        } else {
+                        rx_count += 1;
+                        if rx_fifo_count == RTS_PULSE_WIDTH {
+                            self.rts(false);
+                        } else if rx_fifo_count == RTS_PULSE_WIDTH * 2 {
+                            self.rts(true);
+                            rx_fifo_count = 0;
+                        }
+                        if let Err(_) = pro.enqueue(ch) {
                             println!("[USER UART] Serial rx buffer overflow!");
+                        }
+                        if pro.len() >= DEFAULT_RX_BUFFER_SIZE {
                             self.disable_rdai();
                             break;
                         }
@@ -865,21 +904,7 @@ impl AsyncSerial {
                 IID_A::THR_EMPTY => {
                     // println!("[SERIAL] Transmitter Holding Register Empty");
                     self.tx_intr_count.fetch_add(1, Relaxed);
-                    let mut tx_count = 0;
-                    let mut tx_fifo_count = self.tx_fifo_count.load(Acquire);
-                    let mut con = self.tx_con.lock();
-                    while tx_fifo_count < FIFO_DEPTH {
-                        if let Some(ch) = con.dequeue() {
-                            self.send(ch);
-                            tx_count += 1;
-                            tx_fifo_count += 1;
-                        } else {
-                            self.disable_threi();
-                            break;
-                        }
-                    }
-                    self.tx_count.fetch_add(tx_count, Relaxed);
-                    self.tx_fifo_count.store(tx_fifo_count, Release);
+                    self.start_tx();
                 }
                 IID_A::RECEIVER_LINE_STATUS => {
                     let block = self.hardware();
@@ -902,22 +927,27 @@ impl AsyncSerial {
                     }
                 }
                 IID_A::MODEM_STATUS => {
-                    // self.cts_asserted = self.cts();
                     if self.dcts() {
-                        if self.cts() {
-                            self.tx_fifo_count.store(0, Relaxed);
-                            self.enable_threi();
-                            // println!("dcts && cts");
-                            if let Some(mut waker) = self.write_waker.try_lock() {
-                                if waker.is_some() {
-                                    println!("%%% [{}] w wake %%%%", self.addr_no());
-                                    waker.take().unwrap().wake();
-                                } else {
-                                    println!("___ [{}] no w waker ____", self.addr_no());
-                                }
+                        let cts = self.cts();
+                        if cts == self.prev_cts.load(Relaxed) {
+                            self.tx_fifo_count
+                                .fetch_add(-(RTS_PULSE_WIDTH as isize * 2), Relaxed);
+                        } else {
+                            self.tx_fifo_count
+                                .fetch_add(-(RTS_PULSE_WIDTH as isize), Relaxed);
+                        }
+                        self.prev_cts.store(cts, Relaxed);
+                        self.toggle_threi();
+                        // println!("dcts && cts");
+                        if let Some(mut waker) = self.write_waker.try_lock() {
+                            if waker.is_some() {
+                                println!("%%% [{}] w wake %%%%", self.addr_no());
+                                waker.take().unwrap().wake();
                             } else {
-                                println!("cannot lock writer waker");
+                                println!("___ [{}] no w waker ____", self.addr_no());
                             }
+                        } else {
+                            println!("cannot lock writer waker");
                         }
                     } else {
                         let block = self.hardware();
@@ -1027,11 +1057,10 @@ impl Future for SerialWriteFuture<'_> {
         // println!("write poll");
         // let driver = self.driver.clone();
 
-        if self.driver.tx_fifo_count.load(Relaxed) < FIFO_DEPTH
-            && !self.driver.tx_intr_enabled.load(Relaxed)
-        {
+        if self.driver.tx_fifo_count.load(Relaxed) < FIFO_DEPTH as _ {
             println!("=== [{:x}] w intr en ====", self.driver.addr_no());
-            self.driver.enable_threi();
+            self.driver.toggle_threi();
+            self.driver.start_tx();
         }
         while let Ok(()) = self.driver.try_write(self.buf[self.write_len]) {
             if self.write_len < self.buf.len() - 1 {
