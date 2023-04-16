@@ -23,6 +23,9 @@ user:
 user_lrv:
     cd ../user && make build_lrv
 
+user_lrv_trace:
+    cd ../user && make build_lrv_trace
+
 build: user
     cp src/linker-qemu.ld src/linker.ld
     cargo build --features "board_qemu" --release
@@ -35,6 +38,17 @@ build_lrv: user_lrv
     {{OBJCOPY}} {{KERNEL_ELF}} --strip-all -O binary {{KERNEL_BIN}}
     cp {{KERNEL_BIN}} {{KERNEL_BIN_LRV}}
     rm src/linker.ld
+
+build_lrv_trace: user_lrv_trace
+    cp src/linker-lrv.ld src/linker.ld
+    cargo build --features "board_lrv trace" --release
+    {{OBJCOPY}} {{KERNEL_ELF}} --strip-all -O binary {{KERNEL_BIN}}
+    cp {{KERNEL_BIN}} {{KERNEL_BIN_LRV}}
+    rm src/linker.ld
+
+dump_trace:
+    ssh zcu102 -C "/root/dump-trace.exe /root/trace.bin"
+    scp zcu102:~/trace.bin ../trace/
 
 disasm: build
     {{OBJDUMP}} -S -t {{KERNEL_ELF}} > {{KERNEL_ASM}}
