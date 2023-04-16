@@ -59,7 +59,7 @@ pub fn push_trace(event_id: usize) -> usize {
         // __push_trace(event_id)
         core::arch::asm!(
             "
-        amoadd.d {tail}, {step}, ({mem_end}) # t2 <- queue_tail, queue_tail <- queue_tail + 16
+        amoadd.d.aqrl {tail}, {step}, ({mem_end}) # t2 <- queue_tail, queue_tail <- queue_tail + 16
         slli {eid_ext}, tp, 32
         or {eid}, {eid}, {eid_ext}
         slli {eid_ext}, gp, 36

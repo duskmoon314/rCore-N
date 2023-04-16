@@ -41,6 +41,13 @@ pub const SERIAL_INTR_ENTER: usize = 0x5e1a_0000;
 pub const SERIAL_INTR_EXIT: usize = 0x5e1a_1000;
 pub const SERIAL_CALL_ENTER: usize = 0x5e1a_2000;
 pub const SERIAL_CALL_EXIT: usize = 0x5e1a_3000;
+pub const SERIAL_TEST_ENTER: usize = 0x5e1a_4000;
+pub const SERIAL_TEST_EXIT: usize = 0x5e1a_5000;
+
+// PLIC
+pub const PLIC_CLAIM: usize = 0x911c_0000;
+pub const PLIC_COMPLETE_ENTER: usize = 0x911c_1000;
+pub const PLIC_COMPLETE_EXIT: usize = 0x911c_2000;
 
 // misc
 pub const TRACE_TEST: usize = 0x315c_0000;
@@ -62,7 +69,7 @@ pub fn push_trace(event_id: usize) -> usize {
         // __push_trace(event_id)
         core::arch::asm!(
             "
-        amoadd.d {tail}, {step}, ({mem_end})  # t2 <- queue_tail, queue_tail <- queue_tail + 16
+        amoadd.d.aqrl {tail}, {step}, ({mem_end})  # t2 <- queue_tail, queue_tail <- queue_tail + 16
         slli {eid_ext}, tp, 32  # eid[35:32] <- hart_id
         or {eid}, {eid}, {eid_ext}
         slli {eid_ext}, gp, 36  # eid[39:36] <- pid

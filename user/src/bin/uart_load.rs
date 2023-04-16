@@ -8,11 +8,14 @@ extern crate alloc;
 use alloc::{sync::Arc, vec::Vec};
 use bitflags::bitflags;
 use core::{
+    future::Future,
     num::Wrapping,
+    pin::Pin,
     sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicUsize, Ordering::Relaxed},
+    task::{Context, Poll, Waker},
 };
 use embedded_hal::serial::{Read, Write};
-use executor::spawn;
+use executor::{run_until_idle, spawn};
 use heapless::spsc::Queue;
 use lazy_static::*;
 use nb::block;
@@ -21,8 +24,13 @@ use rand_xorshift::XorShiftRng;
 use riscv::register::uie;
 use spin::Mutex;
 use user_lib::{
-    claim_ext_int, get_time, init_user_trap, read, set_ext_int_enable, set_timer, sleep,
-    trace::{push_trace, SERIAL_CALL_ENTER, SERIAL_CALL_EXIT, U_TRAP_RETURN},
+    claim_ext_int,
+    future::GetWakerFuture,
+    get_time, init_user_trap, read, set_ext_int_enable, set_timer, sleep,
+    trace::{
+        push_trace, PLIC_COMPLETE_ENTER, PLIC_COMPLETE_EXIT, SERIAL_CALL_ENTER, SERIAL_CALL_EXIT,
+        SERIAL_TEST_ENTER, SERIAL_TEST_EXIT, U_TRAP_RETURN,
+    },
     trap::{get_context, hart_id, Plic},
     user_uart::*,
     write,
@@ -52,6 +60,8 @@ const SERIAL_POLL_READ: usize = 63;
 const SERIAL_POLL_WRITE: usize = 64;
 const SERIAL_INTR_READ: usize = 65;
 const SERIAL_INTR_WRITE: usize = 66;
+const SERIAL_ASYNC_READ: usize = 67;
+const SERIAL_ASYNC_WRITE: usize = 68;
 
 // type Rng = Mutex<XorShiftRng>;
 type RngInner = IncOneRng;
@@ -241,6 +251,7 @@ fn user_polling_test() -> (usize, usize, usize) {
     set_timer(time_us + TEST_TIME_US);
     // avoid glitches
     let _unused = serial.dcts();
+    push_trace(SERIAL_TEST_ENTER);
 
     while !(IS_TIMEOUT.load(Relaxed)) {
         serial.error_handler();
@@ -288,12 +299,13 @@ fn user_polling_test() -> (usize, usize, usize) {
             break;
         }
     }
+    push_trace(SERIAL_TEST_EXIT);
 
     if uart_irqn == 14 || uart_irqn == 6 {
         sleep(500);
     }
     println!(
-        "[uart {}] polling mode, err pos: {}, empty read: {}",
+        "[uart {}] polling, err pos: {}, empty read: {}",
         serial_number, err_pos, empty_read
     );
     (serial.rx_count, serial.tx_count, error_count)
@@ -512,6 +524,7 @@ fn user_intr_test() -> (usize, usize, usize) {
     set_timer(time_us + TEST_TIME_US);
     // avoid glitches
     let _unused = serial.dcts();
+    push_trace(SERIAL_TEST_ENTER);
 
     unsafe {
         uie::set_uext();
@@ -571,7 +584,13 @@ fn user_intr_test() -> (usize, usize, usize) {
             serial.interrupt_handler();
             push_trace(U_TRAP_RETURN | 8 | 128);
             HAS_INTR.store(false, Relaxed);
+            push_trace(PLIC_COMPLETE_ENTER | get_context(hart_id(), 'U'));
             Plic::complete(get_context(hart_id(), 'U'), uart_irqn);
+            push_trace(PLIC_COMPLETE_EXIT | get_context(hart_id(), 'U'));
+
+            push_trace(PLIC_COMPLETE_ENTER | get_context(hart_id(), 'U'));
+            Plic::complete(get_context(hart_id(), 'U'), uart_irqn);
+            push_trace(PLIC_COMPLETE_EXIT | get_context(hart_id(), 'U'));
         }
     }
     unsafe {
@@ -579,6 +598,7 @@ fn user_intr_test() -> (usize, usize, usize) {
         uie::clear_usoft();
         uie::clear_utimer();
     }
+    push_trace(SERIAL_TEST_EXIT);
 
     if uart_irqn == 14 || uart_irqn == 6 {
         sleep(500);
@@ -591,6 +611,8 @@ fn user_intr_test() -> (usize, usize, usize) {
 }
 
 static ERROR_COUNT: AtomicUsize = AtomicUsize::new(0);
+static READ_DONE: AtomicBool = AtomicBool::new(false);
+static WRITE_DONE: AtomicBool = AtomicBool::new(false);
 
 async fn read_task(serial: Arc<AsyncSerial>) {
     let mut error_count = ERROR_COUNT.load(Relaxed);
@@ -619,12 +641,46 @@ async fn read_task(serial: Arc<AsyncSerial>) {
         expect_rx = rx_rng.next_u32();
     }
     ERROR_COUNT.store(error_count, Relaxed);
+    READ_DONE.store(true, Relaxed);
 }
 
 async fn write_task(serial: Arc<AsyncSerial>) {
     let mut tx_rng = TX_RNG.lock();
     let tx_buf: [u8; HALF_FIFO_DEPTH] = array_init::array_init(|_| tx_rng.next_u32() as _);
     serial.write(&tx_buf).await;
+    WRITE_DONE.store(true, Relaxed);
+}
+
+type GlobalWaker = Mutex<Option<Waker>>;
+
+lazy_static! {
+    static ref INTR_TASK_WAKER: GlobalWaker = Mutex::new(None);
+}
+
+struct IntrHandlerFuture {
+    driver: Arc<AsyncSerial>,
+    irqn: u16,
+}
+
+impl Future for IntrHandlerFuture {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.driver.interrupt_handler();
+        push_trace(U_TRAP_RETURN | 8 | 128);
+        HAS_INTR.store(false, Relaxed);
+        Plic::complete(get_context(hart_id(), 'U'), self.irqn);
+        Poll::Pending
+    }
+}
+
+async fn intr_handler_task(serial: Arc<AsyncSerial>, uart_irqn: u16) {
+    let raw_waker = GetWakerFuture.await;
+    INTR_TASK_WAKER.lock().replace(raw_waker);
+    let future = IntrHandlerFuture {
+        driver: serial,
+        irqn: uart_irqn,
+    };
+    future.await
 }
 
 fn user_async_test() -> (usize, usize, usize) {
@@ -635,6 +691,8 @@ fn user_async_test() -> (usize, usize, usize) {
     }
     let mut hasher = Hasher::new();
     let uart_irqn = UART_IRQN.load(Relaxed);
+    let serial_number = irq_to_serial_id(uart_irqn);
+
     let claim_res = claim_ext_int(uart_irqn as usize);
     type RxBuffer = Queue<u8, DEFAULT_RX_BUFFER_SIZE>;
     type TxBuffer = Queue<u8, DEFAULT_TX_BUFFER_SIZE>;
@@ -653,15 +711,18 @@ fn user_async_test() -> (usize, usize, usize) {
     serial.hardware_init(BAUD_RATE);
     let en_res = set_ext_int_enable(uart_irqn as usize, 1);
     println!(
-        "[uart load] Async mode, claim result: {:#x}, enable res: {:#x}",
-        claim_res, en_res
+        "[uart load {}] Async mode, claim result: {:#x}, enable res: {:#x}",
+        serial_number, claim_res, en_res
     );
     let mut err_pos = -1;
-
-    let (reader, writer) = (executor::Executor::default(), executor::Executor::default());
+    spawn(intr_handler_task(serial.clone(), uart_irqn));
 
     let time_us = get_time() * 1000;
     set_timer(time_us + TEST_TIME_US);
+
+    // avoid glitches
+    let _unused = serial.dcts();
+
     unsafe {
         uie::set_uext();
         uie::set_usoft();
@@ -669,30 +730,26 @@ fn user_async_test() -> (usize, usize, usize) {
     }
 
     while !(IS_TIMEOUT.load(Relaxed)) {
-        push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_READ);
-        // if uart_irqn & 1 == 1 {
-        if !reader.run_until_idle() {
-            println!("[uart {}] spawn read tasks", uart_irqn);
+        run_until_idle();
+        // if serial_number & 1 == 1 {
+        push_trace(SERIAL_CALL_ENTER + SERIAL_ASYNC_WRITE);
+        if WRITE_DONE.load(Relaxed) {
+            WRITE_DONE.store(false, Relaxed);
+            println!("[uart {}] spawn write tasks", serial_number);
+            spawn(write_task(serial.clone()));
         }
-        reader.spawn(read_task(serial.clone()));
+        push_trace(SERIAL_CALL_EXIT + SERIAL_ASYNC_WRITE);
         // }
-        push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_READ);
 
-        push_trace(SERIAL_CALL_ENTER + SERIAL_INTR_WRITE);
-        if uart_irqn & 1 == 0 {
-            if !writer.run_until_idle() {
-                println!("[uart {}] spawn write tasks", uart_irqn);
-            }
-            writer.spawn(write_task(serial.clone()));
+        // if serial_number & 1 == 0 {
+        push_trace(SERIAL_CALL_ENTER + SERIAL_ASYNC_READ);
+        if READ_DONE.load(Relaxed) {
+            READ_DONE.store(false, Relaxed);
+            println!("[uart {}] spawn read tasks", serial_number);
+            spawn(read_task(serial.clone()));
         }
-        push_trace(SERIAL_CALL_EXIT + SERIAL_INTR_WRITE);
-
-        if HAS_INTR.load(Relaxed) {
-            serial.interrupt_handler();
-            push_trace(U_TRAP_RETURN | 8 | 128);
-            HAS_INTR.store(false, Relaxed);
-            Plic::complete(get_context(hart_id(), 'U'), uart_irqn);
-        }
+        push_trace(SERIAL_CALL_EXIT + SERIAL_ASYNC_READ);
+        // }
     }
     unsafe {
         uie::clear_uext();
@@ -704,7 +761,8 @@ fn user_async_test() -> (usize, usize, usize) {
         sleep(500);
     }
     println!(
-        "[uart load] Intr count: {}, Tx: {}, Rx: {}, err pos: {}",
+        "[uart {}] Async, Intr count: {}, Tx: {}, Rx: {}, err pos: {}",
+        serial_number,
         serial.intr_count.load(Relaxed),
         serial.tx_intr_count.load(Relaxed),
         serial.rx_intr_count.load(Relaxed),
