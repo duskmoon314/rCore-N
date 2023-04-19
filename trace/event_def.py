@@ -65,6 +65,10 @@ event_map = {
             0x3: {"name": "call exit"},
             0x4: {"name": "test enter"},
             0x5: {"name": "test exit"},
+            0x6: {"name": "rts"},
+            0x7: {"name": "cts"},
+            0x8: {"name": "tx"},
+            0x9: {"name": "rx"},
         },
     },
     0x911C: {
@@ -73,6 +77,19 @@ event_map = {
             0x0: {"name": "claim"},
             0x1: {"name": "complete enter"},
             0x2: {"name": "complete exit"},
+        },
+    },
+    0xA57C: {
+        "name": "async",
+        "sub_event": {
+            0x0: {"name": "read spawn"},
+            0x1: {"name": "read poll"},
+            0x2: {"name": "read wake"},
+            0x3: {"name": "write spawn"},
+            0x4: {"name": "write poll"},
+            0x5: {"name": "write wake"},
+            0x6: {"name": "intr poll"},
+            0x7: {"name": "intr wake"},
         },
     },
     0x315C: {

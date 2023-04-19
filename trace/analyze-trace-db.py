@@ -99,15 +99,28 @@ def serial_stat(rec_dict, enter_id, exit_id):
 
 if __name__ == "__main__":
     trace_db = sl.connect("trace.sqlite")
-    trace_db.execute("DROP TABLE IF EXISTS trace_filter;")
+    trace_db.execute("DROP TABLE IF EXISTS trace_filter_tx;")
     # no syscall
     trace_db.execute(
         """
-        CREATE TABLE trace_filter AS
+        CREATE TABLE trace_filter_tx AS
             SELECT *
             FROM trace
             WHERE NOT event='syscall'
                 AND NOT (event='S trap' AND (extra='8'))
-                AND pid=4
+                AND pid=24
+    """
+    )
+
+    trace_db.execute("DROP TABLE IF EXISTS trace_filter_rx;")
+    # no syscall
+    trace_db.execute(
+        """
+        CREATE TABLE trace_filter_rx AS
+            SELECT *
+            FROM trace
+            WHERE NOT event='syscall'
+                AND NOT (event='S trap' AND (extra='8'))
+                AND pid=23
     """
     )

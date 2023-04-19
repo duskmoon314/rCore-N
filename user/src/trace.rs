@@ -43,11 +43,25 @@ pub const SERIAL_CALL_ENTER: usize = 0x5e1a_2000;
 pub const SERIAL_CALL_EXIT: usize = 0x5e1a_3000;
 pub const SERIAL_TEST_ENTER: usize = 0x5e1a_4000;
 pub const SERIAL_TEST_EXIT: usize = 0x5e1a_5000;
+pub const SERIAL_RTS: usize = 0x5e1a_6000;
+pub const SERIAL_CTS: usize = 0x5e1a_7000;
+pub const SERIAL_TX: usize = 0x5e1a_8000;
+pub const SERIAL_RX: usize = 0x5e1a_9000;
 
 // PLIC
 pub const PLIC_CLAIM: usize = 0x911c_0000;
 pub const PLIC_COMPLETE_ENTER: usize = 0x911c_1000;
 pub const PLIC_COMPLETE_EXIT: usize = 0x911c_2000;
+
+// async
+pub const ASYNC_READ_SPAWN: usize = 0xa57c_0000;
+pub const ASYNC_READ_POLL: usize = 0xa57c_1000;
+pub const ASYNC_READ_WAKE: usize = 0xa57c_2000;
+pub const ASYNC_WRITE_SPAWN: usize = 0xa57c_3000;
+pub const ASYNC_WRITE_POLL: usize = 0xa57c_4000;
+pub const ASYNC_WRITE_WAKE: usize = 0xa57c_5000;
+pub const ASYNC_INTR_POLL: usize = 0xa57c_6000;
+pub const ASYNC_INTR_WAKE: usize = 0xa57c_7000;
 
 // misc
 pub const TRACE_TEST: usize = 0x315c_0000;
@@ -86,4 +100,21 @@ pub fn push_trace(event_id: usize) -> usize {
         )
     }
     cycle
+}
+
+#[inline]
+pub fn clear_trace() {
+    #[cfg(all(feature = "board_lrv", feature = "trace"))]
+    unsafe {
+        // __push_trace(event_id)
+        core::arch::asm!(
+            "
+            # queue_tail <- MEMORY_END + 16
+            amoswap.d.aqrl {tail}, {init}, ({mem_end})
+            ",
+            init = in(reg) (MEMORY_END + 16),
+            mem_end = in(reg) MEMORY_END,
+            tail = out(reg) _,
+        )
+    }
 }
