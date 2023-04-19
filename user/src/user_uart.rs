@@ -1,5 +1,8 @@
 use crate::future::GetWakerFuture;
-use crate::trace::{SERIAL_INTR_ENTER, SERIAL_INTR_EXIT};
+use crate::trace::{
+    push_trace, ASYNC_READ_POLL, ASYNC_WRITE_POLL, SERIAL_CTS, SERIAL_INTR_ENTER, SERIAL_INTR_EXIT,
+    SERIAL_RTS, SERIAL_RX, SERIAL_TX,
+};
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use core::future::Future;
@@ -259,7 +262,6 @@ impl BufferedSerial {
 
         use uart::iir::IID_A;
 
-        use crate::trace::push_trace;
         while let Some(int_type) = self.hardware().iir().read().iid().variant() {
             if int_type == IID_A::NO_INTERRUPT_PENDING {
                 break;
@@ -475,7 +477,9 @@ impl PollingSerial {
     fn try_recv(&self) -> Option<u8> {
         let block = self.hardware();
         if block.lsr.read().dr().is_ready() {
-            Some(block.rbr().read().rbr().bits())
+            let ch = block.rbr().read().rbr().bits();
+            push_trace(SERIAL_RX | ch as usize);
+            Some(ch)
         } else {
             None
         }
@@ -484,6 +488,7 @@ impl PollingSerial {
     #[inline]
     fn send(&self, ch: u8) {
         let block = self.hardware();
+        push_trace(SERIAL_TX | ch as usize);
         block.thr().write(|w| w.thr().variant(ch));
     }
 
@@ -558,8 +563,10 @@ impl Write<u8> for PollingSerial {
             let cts = self.cts();
             if cts == self.prev_cts {
                 // while !self.hardware().lsr.read().thre().is_empty() {}
+                push_trace(SERIAL_CTS | (RTS_PULSE_WIDTH * 2));
                 self.tx_fifo_count -= (RTS_PULSE_WIDTH * 2) as isize;
             } else {
+                push_trace(SERIAL_CTS | RTS_PULSE_WIDTH);
                 self.tx_fifo_count -= RTS_PULSE_WIDTH as isize;
             }
             self.prev_cts = cts;
@@ -593,8 +600,10 @@ impl Read<u8> for PollingSerial {
             self.rx_count += 1;
             self.rx_fifo_count += 1;
             if self.rx_fifo_count == RTS_PULSE_WIDTH {
+                push_trace(SERIAL_RTS);
                 self.rts(false);
             } else if self.rx_fifo_count == RTS_PULSE_WIDTH * 2 {
+                push_trace(SERIAL_RTS | 1);
                 self.rts(true);
                 self.rx_fifo_count = 0;
             }
@@ -616,6 +625,7 @@ impl Drop for PollingSerial {
         block
             .fcr()
             .write(|w| w.fifoe().clear_bit().rfifor().set_bit().xfifor().set_bit());
+        // println!("Polling driver dropped!");
     }
 }
 
@@ -747,7 +757,9 @@ impl AsyncSerial {
     fn try_recv(&self) -> Option<u8> {
         let block = self.hardware();
         if block.lsr.read().dr().bit_is_set() {
-            Some(block.rbr().read().bits() as _)
+            let ch = block.rbr().read().rbr().bits();
+            push_trace(SERIAL_RX | ch as usize);
+            Some(ch)
         } else {
             None
         }
@@ -755,6 +767,7 @@ impl AsyncSerial {
 
     fn send(&self, ch: u8) {
         let block = self.hardware();
+        push_trace(SERIAL_TX | ch as usize);
         block.thr().write(|w| w.thr().variant(ch));
     }
 
@@ -762,6 +775,7 @@ impl AsyncSerial {
         if let Some(mut rx_lock) = self.rx_con.try_lock() {
             rx_lock.dequeue()
         } else {
+            println!("[async] cannot lock rx queue!");
             None
         }
     }
@@ -770,6 +784,7 @@ impl AsyncSerial {
         if let Some(mut tx_lock) = self.tx_pro.try_lock() {
             tx_lock.enqueue(ch)
         } else {
+            println!("[async] cannot lock tx queue!");
             Err(ch)
         }
     }
@@ -822,7 +837,7 @@ impl AsyncSerial {
     fn start_tx(&self) {
         let mut tx_count = 0;
         let mut tx_fifo_count = self.tx_fifo_count.load(Relaxed);
-        assert!(tx_fifo_count >= 0);
+        // assert!(tx_fifo_count >= 0);
         assert!(tx_fifo_count <= FIFO_DEPTH as _);
         let mut con = self.tx_con.lock();
 
@@ -849,7 +864,7 @@ impl AsyncSerial {
     pub fn interrupt_handler(&self) {
         // println!("[SERIAL] Interrupt!");
 
-        use crate::trace::push_trace;
+        use crate::trace::{ASYNC_READ_WAKE, ASYNC_WRITE_WAKE};
         use core::sync::atomic::Ordering::{Acquire, Release};
         use uart::iir::IID_A;
 
@@ -869,33 +884,34 @@ impl AsyncSerial {
                     let mut rx_fifo_count = self.rx_fifo_count.load(Acquire);
                     let mut pro = self.rx_pro.lock();
                     while let Some(ch) = self.try_recv() {
-                        if rx_fifo_count == 0 {
-                            self.rts(false);
-                        }
                         rx_fifo_count += 1;
                         rx_count += 1;
                         if rx_fifo_count == RTS_PULSE_WIDTH {
+                            push_trace(SERIAL_RTS);
                             self.rts(false);
                         } else if rx_fifo_count == RTS_PULSE_WIDTH * 2 {
+                            push_trace(SERIAL_RTS | 1);
                             self.rts(true);
                             rx_fifo_count = 0;
                         }
                         if let Err(_) = pro.enqueue(ch) {
                             println!("[USER UART] Serial rx buffer overflow!");
                         }
-                        if pro.len() >= DEFAULT_RX_BUFFER_SIZE {
+                        if pro.len() >= DEFAULT_RX_BUFFER_SIZE - 1 {
                             self.disable_rdai();
                             break;
                         }
                     }
                     self.rx_fifo_count.store(rx_fifo_count, Release);
                     self.rx_count.fetch_add(rx_count, Relaxed);
-                    if let Some(mut waker) = self.read_waker.try_lock() {
+                    if let Some(waker) = self.read_waker.try_lock() {
                         if waker.is_some() {
-                            println!("*** [{}] r wake ****", self.addr_no());
-                            waker.take().unwrap().wake();
+                            // println!("*** [{}] r wake ****", self.addr_no());
+                            // waker.take().unwrap().wake();
+                            push_trace(ASYNC_READ_WAKE);
+                            waker.as_ref().unwrap().wake_by_ref();
                         } else {
-                            println!("&&& [{}] no r waker &&&&", self.addr_no());
+                            // println!("&&& [{}] no r waker &&&&", self.addr_no());
                         }
                     } else {
                         println!("cannot lock reader waker");
@@ -930,21 +946,25 @@ impl AsyncSerial {
                     if self.dcts() {
                         let cts = self.cts();
                         if cts == self.prev_cts.load(Relaxed) {
+                            push_trace(SERIAL_CTS | (RTS_PULSE_WIDTH * 2));
                             self.tx_fifo_count
                                 .fetch_add(-(RTS_PULSE_WIDTH as isize * 2), Relaxed);
                         } else {
+                            push_trace(SERIAL_CTS | RTS_PULSE_WIDTH);
                             self.tx_fifo_count
                                 .fetch_add(-(RTS_PULSE_WIDTH as isize), Relaxed);
                         }
                         self.prev_cts.store(cts, Relaxed);
                         self.toggle_threi();
                         // println!("dcts && cts");
-                        if let Some(mut waker) = self.write_waker.try_lock() {
+                        if let Some(waker) = self.write_waker.try_lock() {
                             if waker.is_some() {
-                                println!("%%% [{}] w wake %%%%", self.addr_no());
-                                waker.take().unwrap().wake();
+                                // println!("%%% [{}] w wake %%%%", self.addr_no());
+                                // waker.take().unwrap().wake();
+                                push_trace(ASYNC_WRITE_WAKE);
+                                waker.as_ref().unwrap().wake_by_ref();
                             } else {
-                                println!("___ [{}] no w waker ____", self.addr_no());
+                                // println!("___ [{}] no w waker ____", self.addr_no());
                             }
                         } else {
                             println!("cannot lock writer waker");
@@ -996,6 +1016,14 @@ impl AsyncSerial {
         self.register_write().await;
         future.await;
     }
+
+    pub fn remove_read(&self) {
+        self.read_waker.lock().take();
+    }
+
+    pub fn remove_write(&self) {
+        self.write_waker.lock().take();
+    }
 }
 
 impl Drop for AsyncSerial {
@@ -1004,10 +1032,12 @@ impl Drop for AsyncSerial {
         block.ier().reset();
         let _unused = block.msr.read().bits();
         let _unused = block.lsr.read().bits();
+        self.rts(false);
         // reset Rx & Tx FIFO, disable FIFO
         block
             .fcr()
             .write(|w| w.fifoe().clear_bit().rfifor().set_bit().xfifor().set_bit());
+        // println!("Async driver dropped!");
     }
 }
 
@@ -1023,14 +1053,14 @@ impl Future for SerialReadFuture<'_> {
     fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
         // println!("read poll");
         // let driver = self.driver.clone();
-
         while let Some(data) = self.driver.try_read() {
             if self.read_len < self.buf.len() {
                 let len = self.read_len;
                 self.buf[len] = data;
                 self.read_len += 1;
             } else {
-                println!("### [{:x}] r poll fin ####", self.driver.addr_no());
+                // println!("### [{:x}] r poll fin ####", self.driver.addr_no());
+                push_trace(ASYNC_READ_POLL);
                 return Poll::Ready(());
             }
         }
@@ -1040,6 +1070,7 @@ impl Future for SerialReadFuture<'_> {
             self.driver.enable_rdai();
         }
         // println!("$$$ [{:x}] r poll pen $$$$", driver.addr_no());
+        push_trace(ASYNC_READ_POLL | self.read_len);
         Poll::Pending
     }
 }
@@ -1058,7 +1089,7 @@ impl Future for SerialWriteFuture<'_> {
         // let driver = self.driver.clone();
 
         if self.driver.tx_fifo_count.load(Relaxed) < FIFO_DEPTH as _ {
-            println!("=== [{:x}] w intr en ====", self.driver.addr_no());
+            // println!("=== [{:x}] w intr en ====", self.driver.addr_no());
             self.driver.toggle_threi();
             self.driver.start_tx();
         }
@@ -1066,12 +1097,14 @@ impl Future for SerialWriteFuture<'_> {
             if self.write_len < self.buf.len() - 1 {
                 self.write_len += 1;
             } else {
-                println!("--- [{:x}] w poll fin ----", self.driver.addr_no());
+                // println!("--- [{:x}] w poll fin ----", self.driver.addr_no());
+                push_trace(ASYNC_WRITE_POLL);
                 return Poll::Ready(());
             }
         }
 
-        println!("^^^ [{:x}] w poll pen ^^^^", self.driver.addr_no());
+        // println!("^^^ [{:x}] w poll pen ^^^^", self.driver.addr_no());
+        push_trace(ASYNC_WRITE_POLL | self.write_len);
         Poll::Pending
     }
 }
