@@ -6,7 +6,7 @@ extern crate user_lib;
 extern crate alloc;
 
 use bitflags::bitflags;
-use user_lib::{send_msg, sleep, spawn, waitpid};
+use user_lib::{send_msg, sleep, spawn, trace::clear_trace, waitpid};
 
 const CPU_LOAD_NUM: usize = 1;
 
@@ -24,6 +24,7 @@ bitflags! {
 
 #[no_mangle]
 pub fn main() -> i32 {
+    clear_trace();
     let cpu_load_pid: [usize; CPU_LOAD_NUM] =
         array_init::array_init(|_| spawn("cpu_load\0") as usize);
     let mut exit_code: i32 = 0;
