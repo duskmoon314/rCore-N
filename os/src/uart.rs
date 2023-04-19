@@ -130,9 +130,10 @@ impl BufferedSerial {
                     }
                 }
                 InterruptType::ModemStatus => {
+                    let msr = hardware.read_msr();
                     debug!(
                         "MSR: {:#x}, LSR: {:#x}, IER: {:#x}",
-                        hardware.read_msr(),
+                        msr,
                         hardware.read_lsr(),
                         hardware.read_ier()
                     );
