@@ -17,6 +17,7 @@ pub const PLIC_BASE: usize = 0xc00_0000;
 pub const PLIC_PRIORITY_BIT: usize = 3;
 pub type Plic = PLIC<PLIC_BASE, PLIC_PRIORITY_BIT>;
 
+#[inline]
 pub fn hart_id() -> usize {
     let hart_id: usize;
     unsafe {
@@ -25,6 +26,7 @@ pub fn hart_id() -> usize {
     hart_id
 }
 
+#[inline]
 pub fn get_context(hart_id: usize, mode: char) -> usize {
     const MODE_PER_HART: usize = 3;
     hart_id * MODE_PER_HART

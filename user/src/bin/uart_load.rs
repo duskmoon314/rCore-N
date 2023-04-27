@@ -15,7 +15,8 @@ use core::{
     task::{Context, Poll, Waker},
 };
 use embedded_hal::serial::{Read, Write};
-use executor::{run_until_idle, spawn, Executor};
+use executor::Executor;
+use futures::{SinkExt, StreamExt};
 use heapless::spsc::Queue;
 use lazy_static::*;
 use nb::block;
@@ -45,7 +46,7 @@ static RX_SEED: AtomicU32 = AtomicU32::new(0);
 static TX_SEED: AtomicU32 = AtomicU32::new(0);
 static MODE: AtomicU32 = AtomicU32::new(0);
 
-const TEST_TIME_US: isize = 1_000_000;
+const TEST_TIME_US: isize = 1_00_000;
 // const HALF_FIFO_DEPTH: usize = FIFO_DEPTH / 2;
 const HALF_FIFO_DEPTH: usize = 247;
 
@@ -129,7 +130,8 @@ bitflags! {
         const UART3 = 0b1000;
         const UART4 = 0b10000;
         const ASYNC_MODE = 0b10_0000;
-        const ALL_MODE = Self::ASYNC_MODE.bits | Self::KERNEL_MODE.bits | Self::POLLING_MODE.bits | Self::INTR_MODE.bits;
+        const UNBUF_ASYNC_MODE = 0b100_0000;
+        const ALL_MODE =Self::UNBUF_ASYNC_MODE.bits | Self::ASYNC_MODE.bits | Self::KERNEL_MODE.bits | Self::POLLING_MODE.bits | Self::INTR_MODE.bits;
     }
 }
 
@@ -153,6 +155,7 @@ pub fn main() -> i32 {
         Some(UartLoadConfig::POLLING_MODE) => user_polling_test(),
         Some(UartLoadConfig::INTR_MODE) => user_intr_test(),
         Some(UartLoadConfig::ASYNC_MODE) => user_async_test(),
+        Some(UartLoadConfig::UNBUF_ASYNC_MODE) => user_unbuffered_async_test(),
         _ => {
             println!("[uart load] Mode not supported!");
             (0, 0, 0)
@@ -585,13 +588,16 @@ fn user_intr_test() -> (usize, usize, usize) {
             serial.interrupt_handler();
             push_trace(U_TRAP_RETURN | 8 | 128);
             HAS_INTR.store(false, Relaxed);
-            push_trace(PLIC_COMPLETE_ENTER | get_context(hart_id(), 'U'));
-            Plic::complete(get_context(hart_id(), 'U'), uart_irqn);
-            push_trace(PLIC_COMPLETE_EXIT | get_context(hart_id(), 'U'));
-
-            push_trace(PLIC_COMPLETE_ENTER | get_context(hart_id(), 'U'));
-            Plic::complete(get_context(hart_id(), 'U'), uart_irqn);
-            push_trace(PLIC_COMPLETE_EXIT | get_context(hart_id(), 'U'));
+            loop {
+                let ctx = get_context(hart_id(), 'U');
+                push_trace(PLIC_COMPLETE_ENTER | ctx);
+                Plic::complete(ctx, uart_irqn);
+                let ctx2 = get_context(hart_id(), 'U');
+                push_trace(PLIC_COMPLETE_EXIT | ctx2);
+                if ctx == ctx2 {
+                    break;
+                }
+            }
         }
     }
     unsafe {
@@ -671,13 +677,16 @@ impl Future for IntrHandlerFuture {
             self.driver.interrupt_handler();
             push_trace(U_TRAP_RETURN | 8 | 128);
             HAS_INTR.store(false, Relaxed);
-            push_trace(PLIC_COMPLETE_ENTER | get_context(hart_id(), 'U'));
-            Plic::complete(get_context(hart_id(), 'U'), self.irqn);
-            push_trace(PLIC_COMPLETE_EXIT | get_context(hart_id(), 'U'));
-
-            push_trace(PLIC_COMPLETE_ENTER | get_context(hart_id(), 'U'));
-            Plic::complete(get_context(hart_id(), 'U'), self.irqn);
-            push_trace(PLIC_COMPLETE_EXIT | get_context(hart_id(), 'U'));
+            loop {
+                let ctx = get_context(hart_id(), 'U');
+                push_trace(PLIC_COMPLETE_ENTER | ctx);
+                Plic::complete(ctx, self.irqn);
+                let ctx2 = get_context(hart_id(), 'U');
+                push_trace(PLIC_COMPLETE_EXIT | ctx2);
+                if ctx == ctx2 {
+                    break;
+                }
+            }
         }
         Poll::Pending
     }
@@ -824,6 +833,191 @@ fn user_async_test() -> (usize, usize, usize) {
     )
 }
 
+async fn unbuffered_read_task(serial: Arc<AsyncUnbufferedSerial>) {
+    let uart_irqn = UART_IRQN.load(Relaxed);
+
+    let mut rx_rng = RX_RNG.lock();
+    let mut expect_rx = rx_rng.next_u32();
+
+    serial.register_read().await;
+    let mut receiver = serial.receiver.lock();
+    while !(IS_TIMEOUT.load(Relaxed)) {
+        push_trace(SERIAL_CALL_ENTER + SERIAL_ASYNC_READ);
+        let rx_val = receiver.next().await.unwrap();
+        if rx_val != expect_rx as u8 {
+            let error_count = ERROR_COUNT.fetch_add(1, Relaxed) + 1;
+            println!(
+                "[uart {}] error at {}, expect: {:x}, err_val: {:x}",
+                uart_irqn, error_count, expect_rx, rx_val
+            );
+            if error_count > MAX_ERROR_CNT {
+                break;
+            }
+        }
+        // hasher.update(&[rx_val]);
+        expect_rx = rx_rng.next_u32();
+        push_trace(SERIAL_CALL_EXIT + SERIAL_ASYNC_READ);
+    }
+    serial.remove_read();
+    READ_DONE.store(true, Relaxed);
+}
+
+async fn unbuffered_write_task(serial: Arc<AsyncUnbufferedSerial>) {
+    let mut tx_rng = TX_RNG.lock();
+    let mut next_tx = tx_rng.next_u32();
+    serial.register_write().await;
+    let mut sender = serial.sender.lock();
+    while !(IS_TIMEOUT.load(Relaxed)) {
+        push_trace(SERIAL_CALL_ENTER + SERIAL_ASYNC_WRITE);
+        sender.send(next_tx as _).await.unwrap();
+        next_tx = tx_rng.next_u32();
+        push_trace(SERIAL_CALL_EXIT + SERIAL_ASYNC_WRITE);
+    }
+    serial.remove_write();
+    WRITE_DONE.store(true, Relaxed);
+}
+
+struct UnbufferedIntrHandler {
+    driver: Arc<AsyncUnbufferedSerial>,
+    irqn: u16,
+}
+
+impl Future for UnbufferedIntrHandler {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        push_trace(ASYNC_INTR_POLL);
+        if HAS_INTR.load(Relaxed) {
+            self.driver.interrupt_handler();
+            push_trace(U_TRAP_RETURN | 8 | 128);
+            HAS_INTR.store(false, Relaxed);
+            loop {
+                let ctx = get_context(hart_id(), 'U');
+                push_trace(PLIC_COMPLETE_ENTER | ctx);
+                Plic::complete(ctx, self.irqn);
+                let ctx2 = get_context(hart_id(), 'U');
+                push_trace(PLIC_COMPLETE_EXIT | ctx2);
+                if ctx == ctx2 {
+                    break;
+                }
+            }
+        }
+        Poll::Pending
+    }
+}
+
+async fn unbuffered_intr_handler_task(serial: Arc<AsyncUnbufferedSerial>, uart_irqn: u16) {
+    let raw_waker = GetWakerFuture.await;
+    INTR_TASK_WAKER.lock().replace(raw_waker);
+    let future = UnbufferedIntrHandler {
+        driver: serial,
+        irqn: uart_irqn,
+    };
+    future.await
+}
+
+fn user_unbuffered_async_test() -> (usize, usize, usize) {
+    unsafe {
+        uie::clear_uext();
+        uie::clear_usoft();
+        uie::clear_utimer();
+    }
+    let mut hasher = Hasher::new();
+    let uart_irqn = UART_IRQN.load(Relaxed);
+    let serial_number = irq_to_serial_id(uart_irqn);
+
+    let claim_res = claim_ext_int(uart_irqn as usize);
+
+    let serial = Arc::new(AsyncUnbufferedSerial::new(get_base_addr_from_irq(
+        uart_irqn,
+    )));
+    serial.hardware_init(BAUD_RATE);
+    let en_res = set_ext_int_enable(uart_irqn as usize, 1);
+    println!(
+        "[uart load {}] Async mode, claim result: {:#x}, enable res: {:#x}",
+        serial_number, claim_res, en_res
+    );
+    let exec = Executor::default();
+    exec.spawn(unbuffered_intr_handler_task(serial.clone(), uart_irqn));
+
+    // if serial_number & 1 == 1 {
+    exec.spawn(unbuffered_write_task(serial.clone()));
+    // }
+
+    // if serial_number & 1 == 0 {
+    exec.spawn(unbuffered_read_task(serial.clone()));
+    // }
+
+    let time_us = get_time() * 1000;
+    set_timer(time_us + TEST_TIME_US);
+
+    // avoid glitches
+    let _unused = serial.dcts();
+    push_trace(SERIAL_TEST_ENTER);
+
+    unsafe {
+        uie::set_uext();
+        uie::set_usoft();
+        uie::set_utimer();
+    }
+
+    while !(IS_TIMEOUT.load(Relaxed)) {
+        exec.run_until_idle();
+
+        if ERROR_COUNT.load(Relaxed) > MAX_ERROR_CNT {
+            break;
+        }
+
+        // if HAS_INTR.load(Relaxed) {
+        //     serial.interrupt_handler();
+        //     push_trace(U_TRAP_RETURN | 8 | 128);
+        //     HAS_INTR.store(false, Relaxed);
+        //     loop {
+        //         let ctx = get_context(hart_id(), 'U');
+        //         push_trace(PLIC_COMPLETE_ENTER | ctx);
+        //         Plic::complete(ctx, uart_irqn);
+        //         let ctx2 = get_context(hart_id(), 'U');
+        //         push_trace(PLIC_COMPLETE_EXIT | ctx2);
+        //         if ctx == ctx2 {
+        //             break;
+        //         }
+        //     }
+        // }
+    }
+    unsafe {
+        uie::clear_uext();
+        uie::clear_usoft();
+        uie::clear_utimer();
+    }
+
+    push_trace(SERIAL_TEST_EXIT);
+
+    // remove all wakers to release Arc to AsyncSerial driver
+    serial.remove_read();
+    serial.remove_write();
+    INTR_TASK_WAKER.lock().take();
+
+    if uart_irqn == 14 || uart_irqn == 6 {
+        sleep(500);
+    }
+    println!(
+        "[uart {}] Unbuffered Async, refcnt: {}",
+        serial_number,
+        Arc::strong_count(&serial)
+    );
+    println!(
+        "[uart {}] Unbuffered Async, Intr count: {}, Tx: {}, Rx: {}",
+        serial_number,
+        serial.intr_count.load(Relaxed),
+        serial.tx_intr_count.load(Relaxed),
+        serial.rx_intr_count.load(Relaxed),
+    );
+    (
+        serial.rx_count(),
+        serial.tx_count(),
+        ERROR_COUNT.load(Relaxed),
+    )
+}
+
 mod user_trap {
     use riscv::register::ucause;
     use user_lib::trace::{push_trace, U_EXT_HANDLER, U_TRAP_HANDLER, U_TRAP_RETURN};
@@ -877,6 +1071,16 @@ mod user_trap {
             if !HAS_INTR.load(Relaxed) {
                 push_trace(U_TRAP_HANDLER | 8 | 128);
                 HAS_INTR.store(true, Relaxed);
+                match UartLoadConfig::from_bits(MODE.load(Relaxed)) {
+                    Some(UartLoadConfig::ASYNC_MODE) | Some(UartLoadConfig::UNBUF_ASYNC_MODE) => {
+                        if let Some(guard) = INTR_TASK_WAKER.try_lock() {
+                            if let Some(waker) = guard.as_ref() {
+                                waker.wake_by_ref();
+                            }
+                        }
+                    }
+                    _ => {}
+                }
             }
         } else {
             println!("[uart load] Unknown UEI!, irq: {}", irq);

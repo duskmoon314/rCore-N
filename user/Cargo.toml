@@ -29,6 +29,7 @@ sha2 = { version = "0.10", default-features = false }
 executor = { git = "https://github.com/rcore-os/executor" }
 lrv-pac = { path = "../pac/lrv-pac", optional = true }
 qemu-pac = { path = "../pac/qemu-pac", optional = true }
+futures = { version = "0.3", default-features = false }
 
 [features]
 board_qemu = ["uart8250", "qemu-pac"]

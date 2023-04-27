@@ -1,16 +1,17 @@
 use crate::future::GetWakerFuture;
 use crate::trace::{
-    push_trace, ASYNC_READ_POLL, ASYNC_WRITE_POLL, SERIAL_CTS, SERIAL_INTR_ENTER, SERIAL_INTR_EXIT,
-    SERIAL_RTS, SERIAL_RX, SERIAL_TX,
+    push_trace, ASYNC_READ_POLL, ASYNC_WRITE_POLL, ASYNC_WRITE_WAKE, SERIAL_CTS, SERIAL_INTR_ENTER,
+    SERIAL_INTR_EXIT, SERIAL_RTS, SERIAL_RX, SERIAL_TX,
 };
 use alloc::collections::VecDeque;
-use alloc::sync::Arc;
+use alloc::sync::{Arc, Weak};
 use core::future::Future;
 use core::sync::atomic::Ordering::Relaxed;
 use core::sync::atomic::{AtomicIsize, AtomicUsize};
 use core::task::{Context, Poll, Waker};
 use core::{convert::Infallible, pin::Pin, sync::atomic::AtomicBool};
 use embedded_hal::serial::{Read, Write};
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use heapless::spsc;
 #[cfg(feature = "board_lrv")]
 use lrv_pac::uart;
@@ -19,8 +20,8 @@ use qemu_pac::uart;
 pub use serial_config::*;
 use spin::Mutex;
 
-pub const DEFAULT_TX_BUFFER_SIZE: usize = 1000;
-pub const DEFAULT_RX_BUFFER_SIZE: usize = 1000;
+pub const DEFAULT_TX_BUFFER_SIZE: usize = 5256;
+pub const DEFAULT_RX_BUFFER_SIZE: usize = 5256;
 
 #[cfg(feature = "board_qemu")]
 mod serial_config {
@@ -1106,5 +1107,466 @@ impl Future for SerialWriteFuture<'_> {
         // println!("^^^ [{:x}] w poll pen ^^^^", self.driver.addr_no());
         push_trace(ASYNC_WRITE_POLL | self.write_len);
         Poll::Pending
+    }
+}
+
+pub struct AsyncUnbufferedSerial {
+    base_address: usize,
+    pub intr_count: AtomicUsize,
+    pub rx_intr_count: AtomicUsize,
+    pub tx_intr_count: AtomicUsize,
+    pub(super) rx_intr_enabled: AtomicBool,
+    pub(super) tx_intr_enabled: AtomicBool,
+    tx_count: Arc<AtomicUsize>,
+    rx_count: Arc<AtomicUsize>,
+    tx_fifo_count: Arc<AtomicIsize>,
+    prev_cts: Arc<AtomicBool>,
+    read_waker: Mutex<Option<Waker>>,
+    write_waker: Mutex<Option<Waker>>,
+    pub receiver: Mutex<UnbufferedSerialReceiver>,
+    pub sender: Mutex<UnbufferedSerialSender>,
+}
+
+impl AsyncUnbufferedSerial {
+    pub fn new(base_address: usize) -> Self {
+        let tx_fifo_count = Arc::new(AtomicIsize::new(0));
+        let tx_count = Arc::new(AtomicUsize::new(0));
+        let rx_count = Arc::new(AtomicUsize::new(0));
+        let prev_cts = Arc::new(AtomicBool::new(true));
+        AsyncUnbufferedSerial {
+            base_address,
+            intr_count: AtomicUsize::new(0),
+            rx_intr_count: AtomicUsize::new(0),
+            tx_intr_count: AtomicUsize::new(0),
+            rx_intr_enabled: AtomicBool::new(false),
+            tx_intr_enabled: AtomicBool::new(false),
+            prev_cts: prev_cts.clone(),
+            read_waker: Mutex::new(None),
+            write_waker: Mutex::new(None),
+            tx_count: tx_count.clone(),
+            rx_count: rx_count.clone(),
+            tx_fifo_count: tx_fifo_count.clone(),
+            sender: Mutex::new(UnbufferedSerialSender {
+                base_address,
+                tx_count: tx_count.clone(),
+                tx_fifo_count: tx_fifo_count.clone(),
+                prev_cts: prev_cts.clone(),
+            }),
+            receiver: Mutex::new(UnbufferedSerialReceiver {
+                base_address,
+                rx_count: rx_count.clone(),
+                rx_fifo_count: AtomicUsize::new(0),
+            }),
+        }
+    }
+
+    fn hardware(&self) -> &uart::RegisterBlock {
+        unsafe { &*(self.base_address as *const _) }
+    }
+
+    fn set_divisor(&self, clock: usize, baud_rate: usize) {
+        let block = self.hardware();
+        let divisor = clock / (16 * baud_rate);
+        block.lcr.write(|w| w.dlab().set_bit());
+        #[cfg(feature = "board_lrv")]
+        {
+            block
+                .dll()
+                .write(|w| unsafe { w.bits((divisor & 0b1111_1111) as u32) });
+            block
+                .dlh()
+                .write(|w| unsafe { w.bits(((divisor >> 8) & 0b1111_1111) as u32) });
+        }
+        #[cfg(feature = "board_qemu")]
+        {
+            block
+                .dll()
+                .write(|w| unsafe { w.bits((divisor & 0b1111_1111) as u8) });
+            block
+                .dlh()
+                .write(|w| unsafe { w.bits(((divisor >> 8) & 0b1111_1111) as u8) });
+        }
+
+        block.lcr.write(|w| w.dlab().clear_bit());
+    }
+
+    #[inline]
+    fn addr_no(&self) -> usize {
+        ((self.base_address >> 12) & 0xFF) + 3
+    }
+
+    pub(super) fn enable_rdai(&self) {
+        self.hardware().ier().modify(|_, w| w.erbfi().set_bit());
+        self.rx_intr_enabled.store(true, Relaxed);
+    }
+
+    fn disable_rdai(&self) {
+        self.hardware().ier().modify(|_, w| w.erbfi().clear_bit());
+        self.rx_intr_enabled.store(false, Relaxed);
+    }
+
+    pub(super) fn enable_threi(&self) {
+        self.hardware().ier().modify(|_, w| w.etbei().set_bit());
+        self.tx_intr_enabled.store(true, Relaxed);
+    }
+
+    fn disable_threi(&self) {
+        self.hardware().ier().modify(|_, w| w.etbei().clear_bit());
+        self.tx_intr_enabled.store(false, Relaxed);
+    }
+
+    #[inline]
+    pub fn rts(&self, is_asserted: bool) {
+        // println!("[uart] rts: {}", is_asserted);
+        self.hardware().mcr.modify(|_, w| w.rts().bit(is_asserted))
+    }
+
+    #[inline]
+    pub fn cts(&self) -> bool {
+        self.hardware().msr.read().cts().bit()
+    }
+
+    #[inline]
+    pub fn dcts(&self) -> bool {
+        self.hardware().msr.read().dcts().bit()
+    }
+
+    pub fn hardware_init(&self, baud_rate: usize) {
+        let block = self.hardware();
+        let _unused = block.msr.read().bits();
+        let _unused = block.lsr.read().bits();
+        block.lcr.reset();
+        // No modem control
+        block.mcr.reset();
+        block.ier().reset();
+        block.fcr().reset();
+
+        // Enable DLAB and Set divisor
+        self.set_divisor(100_000_000, baud_rate);
+        // Disable DLAB and set word length 8 bits, no parity, 1 stop bit
+        block
+            .lcr
+            .modify(|_, w| w.dls().eight().pen().disabled().stop().one());
+        // Enable FIFO
+        block.fcr().write(|w| {
+            w.fifoe()
+                .set_bit()
+                .rfifor()
+                .set_bit()
+                .xfifor()
+                .set_bit()
+                .rt()
+                .two_less_than_full()
+        });
+        self.rts(true);
+        let _unused = self.dcts();
+        // Enable line status & modem status interrupt
+        block
+            .ier()
+            .modify(|_, w| w.elsi().enable().edssi().enable());
+        // Enable received_data_available_interrupt
+        self.enable_rdai();
+        self.enable_threi();
+    }
+
+    #[inline]
+    fn toggle_threi(&self) {
+        self.disable_threi();
+        self.enable_threi();
+    }
+
+    #[inline]
+    fn start_tx(&self) {
+        if let Some(waker) = self.write_waker.lock().as_ref() {
+            // println!("%%% [{}] w wake %%%%", self.addr_no());
+            // waker.take().unwrap().wake();
+            push_trace(ASYNC_WRITE_WAKE);
+            waker.wake_by_ref();
+        } else {
+            // println!("cannot lock writer waker");
+        }
+    }
+
+    #[cfg(any(feature = "board_qemu", feature = "board_lrv"))]
+    pub fn interrupt_handler(&self) {
+        // println!("[SERIAL] Interrupt!");
+
+        use crate::trace::ASYNC_READ_WAKE;
+        use uart::iir::IID_A;
+
+        while let Some(int_type) = self.hardware().iir().read().iid().variant() {
+            if int_type == IID_A::NO_INTERRUPT_PENDING {
+                break;
+            }
+            let intr_id: usize = int_type as u8 as _;
+            push_trace(SERIAL_INTR_ENTER + intr_id);
+            self.intr_count.fetch_add(1, Relaxed);
+            match int_type {
+                IID_A::RECEIVED_DATA_AVAILABLE | IID_A::CHARACTER_TIMEOUT => {
+                    // println!("[SERIAL] Received data available");
+                    self.rx_intr_count.fetch_add(1, Relaxed);
+                    if let Some(waker) = self.read_waker.lock().as_ref() {
+                        // println!("*** [{}] r wake ****", self.addr_no());
+                        // waker.take().unwrap().wake();
+                        push_trace(ASYNC_READ_WAKE);
+                        waker.wake_by_ref();
+                    } else {
+                        // println!("cannot lock reader waker");
+                    }
+                    self.disable_rdai();
+                }
+                IID_A::THR_EMPTY => {
+                    // println!("[SERIAL] Transmitter Holding Register Empty");
+                    self.tx_intr_count.fetch_add(1, Relaxed);
+                    self.start_tx();
+                    self.disable_threi();
+                }
+                IID_A::RECEIVER_LINE_STATUS => {
+                    let block = self.hardware();
+                    let lsr = block.lsr.read();
+                    // if lsr.bi().bit_is_set() {
+                    if lsr.fifoerr().is_error() {
+                        if lsr.bi().bit_is_set() {
+                            println!("[uart] lsr.BI!");
+                        }
+                        if lsr.fe().bit_is_set() {
+                            println!("[uart] lsr.FE!");
+                        }
+                        if lsr.pe().bit_is_set() {
+                            println!("[uart] lsr.PE!");
+                        }
+                    }
+                    if lsr.oe().bit_is_set() {
+                        block.mcr.modify(|_, w| w.rts().deasserted());
+                        println!("[uart] lsr.OE!");
+                    }
+                }
+                IID_A::MODEM_STATUS => {
+                    if self.dcts() {
+                        let cts = self.cts();
+                        if cts == self.prev_cts.load(Relaxed) {
+                            push_trace(SERIAL_CTS | (RTS_PULSE_WIDTH * 2));
+                            self.tx_fifo_count
+                                .fetch_sub((RTS_PULSE_WIDTH * 2) as isize, Relaxed);
+                        } else {
+                            push_trace(SERIAL_CTS | RTS_PULSE_WIDTH);
+                            self.tx_fifo_count
+                                .fetch_sub((RTS_PULSE_WIDTH) as isize, Relaxed);
+                        }
+                        self.prev_cts.store(cts, Relaxed);
+                        // self.toggle_threi();
+                        self.start_tx();
+                    } else {
+                        let block = self.hardware();
+                        println!(
+                            "[USER SERIAL] EDSSI, MSR: {:#x}, LSR: {:#x}, IER: {:#x}",
+                            block.msr.read().bits(),
+                            block.lsr.read().bits(),
+                            block.ier().read().bits()
+                        );
+                    }
+                }
+                _ => {
+                    println!("[USER SERIAL] {:?} not supported!", int_type);
+                }
+            }
+            push_trace(SERIAL_INTR_EXIT + intr_id);
+        }
+    }
+
+    #[inline]
+    pub async fn register_write(&self) {
+        let raw_waker = GetWakerFuture.await;
+        self.write_waker.lock().replace(raw_waker);
+    }
+
+    #[inline]
+    pub async fn write(&self, ch: u8) {
+        self.sender.lock().send(ch).await.unwrap();
+    }
+
+    #[inline]
+    pub async fn register_read(&self) {
+        let raw_waker = GetWakerFuture.await;
+        self.read_waker.lock().replace(raw_waker);
+    }
+
+    #[inline]
+    pub async fn read(&self) -> u8 {
+        self.receiver.lock().next().await.unwrap()
+    }
+
+    #[inline]
+    pub fn remove_read(&self) {
+        self.read_waker.lock().take();
+    }
+
+    #[inline]
+    pub fn remove_write(&self) {
+        self.write_waker.lock().take();
+    }
+
+    pub fn tx_count(&self) -> usize {
+        self.tx_count.load(Relaxed)
+    }
+
+    pub fn rx_count(&self) -> usize {
+        self.rx_count.load(Relaxed)
+    }
+}
+
+impl Drop for AsyncUnbufferedSerial {
+    fn drop(&mut self) {
+        let block = self.hardware();
+        block.ier().reset();
+        let _unused = block.msr.read().bits();
+        let _unused = block.lsr.read().bits();
+        self.rts(false);
+        // reset Rx & Tx FIFO, disable FIFO
+        block
+            .fcr()
+            .write(|w| w.fifoe().clear_bit().rfifor().set_bit().xfifor().set_bit());
+    }
+}
+
+pub struct UnbufferedSerialReceiver {
+    base_address: usize,
+    rx_count: Arc<AtomicUsize>,
+    rx_fifo_count: AtomicUsize,
+}
+
+impl UnbufferedSerialReceiver {
+    #[inline]
+    fn hardware(&self) -> &uart::RegisterBlock {
+        unsafe { &*(self.base_address as *const _) }
+    }
+
+    #[inline]
+    fn try_recv(&self) -> Option<u8> {
+        let block = self.hardware();
+        if block.lsr.read().dr().bit_is_set() {
+            let ch = block.rbr().read().rbr().bits();
+            push_trace(SERIAL_RX | ch as usize);
+            Some(ch)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub(super) fn enable_rdai(&self) {
+        self.hardware().ier().modify(|_, w| w.erbfi().set_bit());
+    }
+
+    #[inline]
+    pub fn rts(&self, is_asserted: bool) {
+        self.hardware().mcr.modify(|_, w| w.rts().bit(is_asserted))
+    }
+}
+
+impl Stream for UnbufferedSerialReceiver {
+    type Item = u8;
+
+    #[inline]
+    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        // println!("read poll");
+        // let driver = self.driver.clone();
+        if let Some(ch) = self.try_recv() {
+            self.rx_count.fetch_add(1, Relaxed);
+            let rx_fifo_count = self.rx_fifo_count.fetch_add(1, Relaxed) + 1;
+            if rx_fifo_count == RTS_PULSE_WIDTH {
+                push_trace(SERIAL_RTS);
+                self.rts(false);
+            } else if rx_fifo_count == RTS_PULSE_WIDTH * 2 {
+                push_trace(SERIAL_RTS | 1);
+                self.rts(true);
+                self.rx_fifo_count.store(0, Relaxed);
+            }
+            push_trace(ASYNC_READ_POLL | 1);
+            Poll::Ready(Some(ch))
+        } else {
+            self.enable_rdai();
+            push_trace(ASYNC_READ_POLL);
+            Poll::Pending
+        }
+    }
+}
+
+pub struct UnbufferedSerialSender {
+    base_address: usize,
+    tx_count: Arc<AtomicUsize>,
+    tx_fifo_count: Arc<AtomicIsize>,
+    prev_cts: Arc<AtomicBool>,
+}
+
+impl UnbufferedSerialSender {
+    #[inline]
+    fn hardware(&self) -> &uart::RegisterBlock {
+        unsafe { &*(self.base_address as *const _) }
+    }
+
+    #[inline]
+    fn hw_send(&self, ch: u8) {
+        let block = self.hardware();
+        push_trace(SERIAL_TX | ch as usize);
+        block.thr().write(|w| w.thr().variant(ch));
+    }
+
+    #[inline]
+    fn disable_threi(&self) {
+        self.hardware().ier().modify(|_, w| w.etbei().clear_bit());
+    }
+
+    #[inline]
+    pub fn cts(&self) -> bool {
+        self.hardware().msr.read().cts().bit()
+    }
+
+    #[inline]
+    pub fn dcts(&self) -> bool {
+        self.hardware().msr.read().dcts().bit()
+    }
+}
+
+impl Sink<u8> for UnbufferedSerialSender {
+    type Error = Infallible;
+
+    #[inline]
+    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        if self.dcts() {
+            let cts = self.cts();
+            if cts == self.prev_cts.load(Relaxed) {
+                push_trace(SERIAL_CTS | (RTS_PULSE_WIDTH * 2));
+                self.tx_fifo_count
+                    .fetch_sub((RTS_PULSE_WIDTH * 2) as isize, Relaxed);
+            } else {
+                push_trace(SERIAL_CTS | RTS_PULSE_WIDTH);
+                self.tx_fifo_count
+                    .fetch_sub((RTS_PULSE_WIDTH) as isize, Relaxed);
+            }
+            self.prev_cts.store(cts, Relaxed);
+            // self.toggle_threi();
+        }
+        if self.tx_fifo_count.load(Relaxed) == FIFO_DEPTH as _ {
+            Poll::Pending
+        } else {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    #[inline]
+    fn start_send(self: Pin<&mut Self>, item: u8) -> Result<(), Self::Error> {
+        self.hw_send(item);
+        self.tx_count.fetch_add(1, Relaxed);
+        self.tx_fifo_count.fetch_add(1, Relaxed);
+        Ok(())
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 }

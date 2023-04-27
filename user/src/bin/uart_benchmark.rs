@@ -18,7 +18,8 @@ bitflags! {
         const UART3 = 0b1000;
         const UART4 = 0b10000;
         const ASYNC_MODE = 0b10_0000;
-        const ALL_MODE = Self::ASYNC_MODE.bits | Self::KERNEL_MODE.bits | Self::POLLING_MODE.bits | Self::INTR_MODE.bits;
+        const UNBUF_ASYNC_MODE = 0b100_0000;
+        const ALL_MODE = Self::UNBUF_ASYNC_MODE.bits | Self::ASYNC_MODE.bits | Self::KERNEL_MODE.bits | Self::POLLING_MODE.bits | Self::INTR_MODE.bits;
     }
 }
 
@@ -54,17 +55,17 @@ pub fn main() -> i32 {
     // println!("[uart benchmark] User mode polling driver benchmark finished.");
     // sleep(1000);
 
-    println!("[uart benchmark] User mode interrupt driver benchmark begin.");
-    let pid1 = spawn("uart_load\0") as usize;
-    let pid2 = spawn("uart_load\0") as usize;
-    sleep(1000);
-    let config1 = UartLoadConfig::INTR_MODE | UartLoadConfig::UART3;
-    let config2 = UartLoadConfig::INTR_MODE | UartLoadConfig::UART4;
-    send_msg(pid1, config1.bits() as usize);
-    send_msg(pid2, config2.bits() as usize);
-    waitpid(pid1, &mut exit_code);
-    waitpid(pid2, &mut exit_code);
-    println!("[uart benchmark] User mode interrupt driver benchmark finished.");
+    // println!("[uart benchmark] User mode interrupt driver benchmark begin.");
+    // let pid1 = spawn("uart_load\0") as usize;
+    // let pid2 = spawn("uart_load\0") as usize;
+    // sleep(1000);
+    // let config1 = UartLoadConfig::INTR_MODE | UartLoadConfig::UART3;
+    // let config2 = UartLoadConfig::INTR_MODE | UartLoadConfig::UART4;
+    // send_msg(pid1, config1.bits() as usize);
+    // send_msg(pid2, config2.bits() as usize);
+    // waitpid(pid1, &mut exit_code);
+    // waitpid(pid2, &mut exit_code);
+    // println!("[uart benchmark] User mode interrupt driver benchmark finished.");
 
     // println!("[uart benchmark] User mode async driver benchmark begin.");
     // let pid1 = spawn("uart_load\0") as usize;
@@ -77,6 +78,18 @@ pub fn main() -> i32 {
     // waitpid(pid1, &mut exit_code);
     // waitpid(pid2, &mut exit_code);
     // println!("[uart benchmark] User mode async driver benchmark finished.");
+
+    println!("[uart benchmark] User mode unbuffered async driver benchmark begin.");
+    let pid1 = spawn("uart_load\0") as usize;
+    let pid2 = spawn("uart_load\0") as usize;
+    sleep(1000);
+    let config1 = UartLoadConfig::UNBUF_ASYNC_MODE | UartLoadConfig::UART3;
+    let config2 = UartLoadConfig::UNBUF_ASYNC_MODE | UartLoadConfig::UART4;
+    send_msg(pid1, config1.bits() as usize);
+    send_msg(pid2, config2.bits() as usize);
+    waitpid(pid1, &mut exit_code);
+    waitpid(pid2, &mut exit_code);
+    println!("[uart benchmark] User mode unbuffered async driver benchmark finished.");
 
     for i in cpu_load_pid {
         send_msg(i, 15);
